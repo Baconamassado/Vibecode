@@ -149,11 +149,13 @@ export function openTrackMenu(track, anchor, { playlistId = null } = {}) {
 
   items.push({ separator: true });
 
-  if (track.permalink_url) {
+  const link = URL.canParse(track.permalink_url) ? new URL(track.permalink_url) : null;
+  if (link?.protocol === "https:" && ["soundcloud.com", "www.soundcloud.com"].includes(link.host) &&
+      !link.username && !link.password) {
     items.push({
       text: "Abrir no SoundCloud",
       icon: "i-link",
-      action: () => window.open(track.permalink_url, "_blank", "noopener"),
+      action: () => window.open(link.href, "_blank", "noopener"),
     });
   }
 

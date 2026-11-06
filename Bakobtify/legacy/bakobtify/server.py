@@ -69,6 +69,11 @@ class BakobtifyHandler(BaseHTTPRequestHandler):
         if getattr(self, "_debug", False):
             super().log_message(fmt, *args)
 
+    def end_headers(self) -> None:
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        super().end_headers()
+
     # -- helpers -------------------------------------------------------
 
     def _send_json(self, status: int, payload: Any) -> None:
@@ -98,6 +103,26 @@ class BakobtifyHandler(BaseHTTPRequestHandler):
         return data
 
     def _dispatch(self, method: str) -> None:
+        hosts = self.headers.get_all("Host", [])
+        port = self.server.server_port
+        valid_hosts = {"localhost", "127.0.0.1"} if port == 80 else {
+            f"localhost:{port}", f"127.0.0.1:{port}",
+        }
+        host = hosts[0].lower() if len(hosts) == 1 else ""
+        origins = self.headers.get_all("Origin", [])
+        if host not in valid_hosts or origins and origins != [f"http://{host}"]:
+            self.close_connection = True
+            self._send_json(403, {"error": "forbidden"})
+            return
+
+        lengths = self.headers.get_all("Content-Length", [])
+        if self.headers.get_all("Transfer-Encoding") or len(lengths) > 1 or (
+            lengths and (not lengths[0].isascii() or not lengths[0].isdigit())
+        ):
+            self.close_connection = True
+            self._send_json(400, {"error": "bad_request"})
+            return
+
         parsed = urlparse(self.path)
         path = parsed.path
 
@@ -108,9 +133,15 @@ class BakobtifyHandler(BaseHTTPRequestHandler):
                 self._send_json(405, {"error": "method_not_allowed"})
             return
 
+        if method == "POST" and self.headers.get_content_type() != "application/json":
+            self.close_connection = True
+            self._send_json(415, {"error": "unsupported_media_type"})
+            return
+
         try:
             body = self._read_body() if method in ("POST", "PUT", "PATCH") else None
         except ValueError as exc:
+            self.close_connection = True
             self._send_json(400, {"error": "bad_request", "message": str(exc)})
             return
 
@@ -141,6 +172,9 @@ class BakobtifyHandler(BaseHTTPRequestHandler):
 
     def _serve_static(self, path: str) -> None:
         rel = path.lstrip("/") or "index.html"
+        if ":" in rel or "\\" in rel:
+            self._send_json(400, {"error": "bad_path"})
+            return
         if rel == "favicon.ico":
             self.send_response(204)
             self.send_header("Content-Length", "0")
@@ -150,6 +184,8 @@ class BakobtifyHandler(BaseHTTPRequestHandler):
         web_root = config.WEB_DIR.resolve()
         try:
             target = (web_root / rel).resolve()
+            if target.is_dir():
+                target = (target / "index.html").resolve()
         except (OSError, ValueError):
             self._send_json(400, {"error": "bad_path"})
             return
@@ -157,8 +193,6 @@ class BakobtifyHandler(BaseHTTPRequestHandler):
         if not target.is_relative_to(web_root) or any(part.startswith(".") for part in target.parts):
             self._send_json(404, {"error": "not_found"})
             return
-        if target.is_dir():
-            target = target / "index.html"
         if not target.is_file():
             self._send_json(404, {"error": "not_found"})
             return
@@ -200,8 +234,10 @@ class BakobtifyServer(ThreadingHTTPServer):
 
 
 def make_server(port: int = config.PORT, host: str = config.HOST) -> ThreadingHTTPServer:
+    if host not in ("127.0.0.1", "localhost"):
+        raise ValueError("O servidor legado só pode escutar em 127.0.0.1.")
     handler_cls = type("BoundHandler", (BakobtifyHandler,), {"ctx": Ctx()})
-    httpd = BakobtifyServer((host, port), handler_cls)
+    httpd = BakobtifyServer(("127.0.0.1", port), handler_cls)
     return httpd
 
 

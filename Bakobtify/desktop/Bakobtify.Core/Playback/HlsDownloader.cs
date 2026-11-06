@@ -13,6 +13,8 @@ public sealed record DownloadedHls(string FilePath, double DurationSeconds, bool
 /// </summary>
 public sealed class HlsDownloader
 {
+    private const int MaxSegmentBytes = 32 * 1024 * 1024;
+    internal const int MaxTrackBytes = 256 * 1024 * 1024;
     private readonly HttpClient _http;
 
     public HlsDownloader(HttpClient http) => _http = http;
@@ -23,6 +25,9 @@ public sealed class HlsDownloader
         CancellationToken ct = default,
         string? mime = null)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromMinutes(5));
+        ct = timeout.Token;
         var manifest = await GetManifestAsync(new Uri(playlistUrl), ct).ConfigureAwait(false);
         if (manifest.IsMaster)
         {
@@ -45,7 +50,12 @@ public sealed class HlsDownloader
         {
             var uri = key.Uri!;
             if (!keyCache.TryGetValue(uri, out var secret))
-                keyCache[uri] = secret = await _http.GetByteArrayAsync(uri, ct).ConfigureAwait(false);
+            {
+                secret = await GetBytesAsync(uri, null, null, ct, maxBytes: 16).ConfigureAwait(false);
+                if (secret.Length != 16)
+                    throw new InvalidDataException("A chave AES-128 do HLS tem tamanho inválido.");
+                keyCache[uri] = secret;
+            }
             return DecryptAes128(bytes, secret, iv);
         }
 
@@ -92,6 +102,8 @@ public sealed class HlsDownloader
                     if (manifest.Segments[index].Key is { } key)
                         bytes = await DecryptAsync(bytes, key, key.Iv ?? BuildIv(manifest.MediaSequence + index))
                             .ConfigureAwait(false);
+                    if (bytes.Length > MaxTrackBytes - output.Position)
+                        throw new InvalidDataException("O áudio HLS excedeu o limite de download.");
                     await output.WriteAsync(bytes, ct).ConfigureAwait(false);
                     progress?.Report((index + 1) / (double)manifest.Segments.Count);
                 }
@@ -111,8 +123,10 @@ public sealed class HlsDownloader
 
     private async Task<HlsManifest> GetManifestAsync(Uri url, CancellationToken ct)
     {
-        using var response = await _http.GetAsync(url, ct).ConfigureAwait(false);
+        using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)
+            .ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
+        await response.Content.LoadIntoBufferAsync(2 * 1024 * 1024, ct).ConfigureAwait(false);
         var text = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         return HlsManifest.Parse(text, response.RequestMessage?.RequestUri ?? url);
     }
@@ -137,11 +151,14 @@ public sealed class HlsDownloader
         string url,
         long? rangeOffset,
         long? rangeLength,
-        CancellationToken ct)
+        CancellationToken ct,
+        int maxBytes = MaxSegmentBytes)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         if (rangeOffset is { } offset && rangeLength is { } length)
         {
+            if (offset < 0 || length <= 0 || length > maxBytes || offset > long.MaxValue - (length - 1))
+                throw new InvalidDataException("Intervalo de bytes HLS inválido.");
             request.Headers.Range = new RangeHeaderValue(offset, offset + length - 1);
         }
 
@@ -153,6 +170,7 @@ public sealed class HlsDownloader
             throw new SoundCloudException($"Falha ao baixar segmento HLS ({(int)response.StatusCode}).");
         }
 
+        await response.Content.LoadIntoBufferAsync(maxBytes, ct).ConfigureAwait(false);
         var bytes = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
 
         if (rangeOffset is { } start && rangeLength is { } size)

@@ -41,14 +41,17 @@ public sealed class SoundCloudClient : IDisposable
     {
         var handler = new SocketsHttpHandler
         {
+            AllowAutoRedirect = false,
+            UseCookies = false,
             AutomaticDecompression = DecompressionMethods.All,
             PooledConnectionLifetime = TimeSpan.FromMinutes(10),
             ConnectTimeout = TimeSpan.FromSeconds(15),
         };
 
-        var client = new HttpClient(handler)
+        var client = new HttpClient(new SoundCloudTransport(handler))
         {
             Timeout = TimeSpan.FromSeconds(40),
+            MaxResponseContentBufferSize = 16 * 1024 * 1024,
         };
 
         client.DefaultRequestHeaders.UserAgent.ParseAdd(AppConfig.UserAgent);
@@ -310,9 +313,12 @@ public sealed class SoundCloudClient : IDisposable
                     throw new SoundCloudException($"SoundCloud respondeu {(int)response.StatusCode}.");
                 }
 
-                if (maxResponseBytes is { } limit)
-                    await response.Content.LoadIntoBufferAsync(limit, ct).ConfigureAwait(false);
-                var text = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                using var bodyTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                bodyTimeout.CancelAfter(TimeSpan.FromSeconds(40));
+                var bodyToken = bodyTimeout.Token;
+                await response.Content.LoadIntoBufferAsync(maxResponseBytes ?? 8 * 1024 * 1024, bodyToken)
+                    .ConfigureAwait(false);
+                var text = await response.Content.ReadAsStringAsync(bodyToken).ConfigureAwait(false);
                 try
                 {
                     return JsonDocument.Parse(text);

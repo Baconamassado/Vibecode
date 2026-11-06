@@ -492,6 +492,9 @@ public sealed class AudioEngine : IDisposable
         IProgress<double>? progress,
         CancellationToken ct)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromMinutes(5));
+        ct = timeout.Token;
         var path = Path.Combine(AppConfig.TempDirectory, $"in-{Guid.NewGuid():N}{extension}");
 
         try
@@ -501,6 +504,8 @@ public sealed class AudioEngine : IDisposable
             response.EnsureSuccessStatusCode();
 
             var total = response.Content.Headers.ContentLength;
+            if (total > HlsDownloader.MaxTrackBytes)
+                throw new InvalidDataException("O áudio excedeu o limite de download.");
             await using var input = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             await using var output = new FileStream(
                 path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, useAsync: true);
@@ -510,8 +515,10 @@ public sealed class AudioEngine : IDisposable
             int read;
             while ((read = await input.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
             {
-                await output.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
                 written += read;
+                if (written > HlsDownloader.MaxTrackBytes)
+                    throw new InvalidDataException("O áudio excedeu o limite de download.");
+                await output.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
                 if (total is > 0) progress?.Report(written / (double)total.Value);
             }
 

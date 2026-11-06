@@ -134,7 +134,7 @@ Variáveis de ambiente (todas opcionais):
 | Variável | Padrão | Descrição |
 |---|---|---|
 | `BAKOBTIFY_PORT` | `8000` | porta HTTP |
-| `BAKOBTIFY_HOST` | `127.0.0.1` | interface de escuta |
+| `BAKOBTIFY_HOST` | `127.0.0.1` | aceita `127.0.0.1` ou `localhost`, ambos com escuta em `127.0.0.1` |
 | `BAKOBTIFY_CLIENT_TTL` | `24` | horas de validade do client_id |
 
 O servidor escuta apenas em localhost. URLs externas não são buscadas a partir

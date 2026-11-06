@@ -80,21 +80,25 @@ internal sealed class ArtworkCache(HttpClient http, CancellationToken lifetime, 
                 thumbnail = await Task.Run(async () =>
                 {
                     const int maxBytes = 4 * 1024 * 1024;
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(40));
+                    var ct = timeout.Token;
                     using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-                    using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, lifetime);
+                    using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
                     response.EnsureSuccessStatusCode();
                     if (response.Content.Headers.ContentLength > maxBytes) return null;
-                    await using var stream = await response.Content.ReadAsStreamAsync(lifetime);
+                    await using var stream = await response.Content.ReadAsStreamAsync(ct);
                     using var data = new MemoryStream();
                     var buffer = new byte[16 * 1024];
                     int read;
-                    while ((read = await stream.ReadAsync(buffer, lifetime)) > 0)
+                    while ((read = await stream.ReadAsync(buffer, ct)) > 0)
                     {
                         if (data.Length + read > maxBytes) return null;
                         data.Write(buffer, 0, read);
                     }
                     data.Position = 0;
                     using var source = Image.FromStream(data);
+                    if (source.Width > 4096 || source.Height > 4096) return null;
                     var ratio = Math.Min(1d, 400d / Math.Max(source.Width, source.Height));
                     return new Bitmap(source, Math.Max(1, (int)(source.Width * ratio)),
                         Math.Max(1, (int)(source.Height * ratio)));

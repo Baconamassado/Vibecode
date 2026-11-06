@@ -2,7 +2,7 @@
 
 import { toggleFavorite } from "../data.js";
 import { isFavorite, setState, state, subscribe } from "../state.js";
-import { clamp, formatTime } from "../util.js";
+import { clamp, escapeHtml, formatTime } from "../util.js";
 import * as engine from "./engine.js";
 import * as queue from "./queue.js";
 
@@ -168,7 +168,7 @@ function syncFromState() {
     nowTitle.textContent = track.title;
     nowArtist.textContent = track.artist || "Desconhecido";
     nowArt.innerHTML = track.artwork
-      ? `<img src="${track.artwork}" alt="">`
+      ? `<img src="${escapeHtml(track.artwork)}" alt="">`
       : `<svg><use href="#i-note"/></svg>`;
     favBtn.disabled = false;
     favBtn.classList.toggle("is-on", isFavorite(track.id));
