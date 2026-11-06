@@ -21,7 +21,9 @@ public sealed record WavInfo(
 
 public static class WavFile
 {
-    public static WavInfo ReadInfo(string path)
+    public static WavInfo ReadInfo(string path) => ReadInfo(path, requireCompletePcm: false);
+
+    internal static WavInfo ReadInfo(string path, bool requireCompletePcm)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: true);
@@ -33,6 +35,7 @@ public static class WavFile
         var sampleRate = 0;
         var channels = 0;
         var bits = 0;
+        var format = 0;
         long dataOffset = -1;
         long dataLength = 0;
 
@@ -44,7 +47,9 @@ public static class WavFile
 
             if (id == "fmt ")
             {
-                reader.ReadUInt16(); // formato (PCM = 1)
+                if (requireCompletePcm && (size < 16 || size > stream.Length - payload))
+                    throw new InvalidDataException("Cabeçalho WAV incompleto.");
+                format = reader.ReadUInt16();
                 channels = reader.ReadUInt16();
                 sampleRate = reader.ReadInt32();
                 reader.ReadInt32(); // byte rate
@@ -67,6 +72,11 @@ public static class WavFile
         {
             throw new InvalidDataException("WAV sem cabeçalho PCM reconhecível.");
         }
+
+        if (requireCompletePcm && (format != 1 || bits != 16 || channels * 2 > ushort.MaxValue ||
+            (long)sampleRate * channels * 2 > int.MaxValue || dataLength > stream.Length - dataOffset ||
+            dataLength == 0 || dataLength % (channels * 2) != 0))
+            throw new InvalidDataException("Áudio PCM do cache inválido ou incompleto.");
 
         if (dataOffset + dataLength > stream.Length)
         {

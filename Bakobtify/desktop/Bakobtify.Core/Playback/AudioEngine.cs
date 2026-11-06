@@ -67,6 +67,9 @@ public sealed class AudioEngine : IDisposable
     private string? CachedPath(Track track, string? localPath) =>
         LocalAcceleration && localPath is null ? LocalAudioCache.PathFor(track.Id) : null;
 
+    private bool HasCachedAudio(Track track, string? localPath) =>
+        CachedPath(track, localPath) is { } path && File.Exists(path) && LocalAudioCache.Read(path, touch: false) is not null;
+
     public TimeSpan Position
     {
         get
@@ -119,7 +122,7 @@ public sealed class AudioEngine : IDisposable
 
     public string GetPreparationStatus(Track track, string? localPath)
     {
-        if (File.Exists(CachedPath(track, localPath))) return "Áudio disponível no cache local";
+        if (HasCachedAudio(track, localPath)) return "Áudio disponível no cache local";
         if (_nextAudio is not { } next || next.Id != track.Id || next.LocalPath != localPath)
             return "Sem preparação antecipada";
         return next.Audio.Status switch
@@ -397,7 +400,7 @@ public sealed class AudioEngine : IDisposable
 
     public void PrepareNext(Track? track, string? localPath)
     {
-        if (track is not null && File.Exists(CachedPath(track, localPath))) track = null;
+        if (track is not null && HasCachedAudio(track, localPath)) track = null;
         if (_nextAudio is { } existing)
         {
             if (track?.Id == existing.Id && localPath == existing.LocalPath) return;

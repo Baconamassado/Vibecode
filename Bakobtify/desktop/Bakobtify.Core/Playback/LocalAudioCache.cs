@@ -14,14 +14,16 @@ internal static class LocalAudioCache
         return Path.Combine(AppConfig.DataDirectory, "cache", "replay", key + ".wav");
     }
 
-    public static WavInfo? Read(string path)
+    public static WavInfo? Read(string path, bool touch = true)
     {
         try
         {
-            var info = WavFile.ReadInfo(path);
-            if (info.FrameCount == 0) return null;
-            try { File.SetLastWriteTimeUtc(path, DateTime.UtcNow); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            var info = WavFile.ReadInfo(path, requireCompletePcm: true);
+            if (touch)
+            {
+                try { File.SetLastWriteTimeUtc(path, DateTime.UtcNow); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
             return info;
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)

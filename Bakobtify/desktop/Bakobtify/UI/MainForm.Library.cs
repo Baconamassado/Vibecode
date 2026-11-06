@@ -198,9 +198,23 @@ internal sealed partial class MainForm
         menu.ShowImageMargin = false;
         menu.ShowCheckMargin = false;
         menu.Padding = new Padding(Pixels(5));
-        // O submenu se ancora nos limites do item, inclusive na parte que
-        // ficaria fora da janela se o WinForms dimensionasse só pelo texto.
-        menu.MinimumSize = new Size(Pixels(ContextMenuItemWidth) + menu.Padding.Horizontal, 0);
+        menu.Opening += (_, _) =>
+        {
+            var items = menu.Items.OfType<ToolStripMenuItem>().ToArray();
+            var width = Pixels(140);
+            foreach (var item in items)
+            {
+                var text = TextRenderer.MeasureText(item.AccessibleName ?? item.Text, menu.Font,
+                    Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
+                width = Math.Max(width, text.Width + Pixels(item.HasDropDownItems ? 64 : 50));
+            }
+            width = Math.Min(width, Pixels(320));
+            // A seta e a janela usam a mesma largura para ancorar o submenu.
+            var menuWidth = width + menu.Padding.Horizontal;
+            menu.MinimumSize = menu.MaximumSize = new Size(menuWidth, 0);
+            foreach (var item in items)
+                item.Size = new Size(width, Pixels(32));
+        };
         void UpdateShape(object? sender, EventArgs args)
         {
             if (menu.ClientSize.Width <= 0 || menu.ClientSize.Height <= 0) return;
@@ -211,15 +225,13 @@ internal sealed partial class MainForm
         menu.Opening += UpdateShape;
     }
 
-    private const int ContextMenuItemWidth = 280;
-
     private ToolStripMenuItem MenuItem(ToolStripItemCollection items, string label, Action? click = null,
         string glyph = "", bool destructive = false)
     {
         var item = new ToolStripMenuItem(label.Replace("&", "&&"))
         {
             AccessibleName = label, Tag = glyph, ForeColor = destructive ? Theme.Pink : Theme.Text,
-            AutoSize = false, Size = new Size(Pixels(ContextMenuItemWidth), Pixels(36))
+            AutoSize = false, Height = Pixels(32)
         };
         if (click is not null) item.Click += (_, _) => RunAction(click);
         items.Add(item);
@@ -259,15 +271,18 @@ internal sealed partial class MainForm
 
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
-            var width = Math.Max(0, e.Item.Width - Px(65));
+            var reserved = e.Item is ToolStripMenuItem { HasDropDownItems: true } ? 64 : 50;
+            var width = Math.Max(0, e.Item.Width - Px(reserved));
             TextRenderer.DrawText(e.Graphics, e.Item.AccessibleName ?? e.Text, e.TextFont,
-                new Rectangle(Px(42), 0, width, e.Item.Height), e.Item.Enabled ? e.Item.ForeColor : Theme.Muted,
+                new Rectangle(Px(38), 0, width, e.Item.Height), e.Item.Enabled ? e.Item.ForeColor : Theme.Muted,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
                 TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
         }
 
         protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
         {
+            if (e.Item is { } item)
+                e.ArrowRectangle = new Rectangle(item.Width - Px(21), 0, Px(12), item.Height);
             e.ArrowColor = e.Item?.Selected == true ? Theme.Accent : Theme.Muted;
             base.OnRenderArrow(e);
         }
