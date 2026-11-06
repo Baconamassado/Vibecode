@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+/data/
+.env
+.env.*
+*.pfx
+*.p12
+*.zip
+.vs/
+**/bin/
+**/obj/
+.sandbox/
+.research/
+.DS_Store
+Thumbs.db

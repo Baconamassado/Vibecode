@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <BakobtifyWebView2Dir Condition="'$(BakobtifyWebView2Dir)' == ''">$(ProgramW6432)\Microsoft Office\root\Office16\ADDINS\Microsoft Power Query for Excel Integrated\bin</BakobtifyWebView2Dir>
+    <BakobtifyHasWebView2 Condition="Exists('$(BakobtifyWebView2Dir)\Microsoft.Web.WebView2.WinForms.dll') And Exists('$(BakobtifyWebView2Dir)\Microsoft.Web.WebView2.Core.dll') And Exists('$(BakobtifyWebView2Dir)\WebView2Loader.dll')">true</BakobtifyHasWebView2>
+    <DefineConstants Condition="'$(BakobtifyHasWebView2)' == 'true'">$(DefineConstants);BAKOBTIFY_WEBVIEW2</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(BakobtifyHasWebView2)' == 'true'">
+    <Reference Include="Microsoft.Web.WebView2.Core" HintPath="$(BakobtifyWebView2Dir)\Microsoft.Web.WebView2.Core.dll" />
+    <Reference Include="Microsoft.Web.WebView2.WinForms" HintPath="$(BakobtifyWebView2Dir)\Microsoft.Web.WebView2.WinForms.dll" />
+    <None Include="$(BakobtifyWebView2Dir)\WebView2Loader.dll" Link="WebView2Loader.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

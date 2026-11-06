@@ -1,0 +1,608 @@
+/* ============================================================
+   Bakobtify — componentes: botões, listas, menus, toasts
+   ============================================================ */
+
+/* ---------- botões ---------- */
+
+.icon-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-full);
+  color: var(--muted);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease),
+    transform 0.15s var(--ease);
+}
+
+.icon-btn:hover {
+  background: var(--elev);
+  color: var(--text);
+}
+
+.icon-btn:active {
+  transform: scale(0.94);
+}
+
+.icon-btn.sm {
+  width: 32px;
+  height: 32px;
+}
+
+.icon-btn.xs {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-xs);
+}
+
+.icon-btn.xs svg {
+  width: 14px;
+  height: 14px;
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.btn {
+  padding: 9px 16px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 550;
+  transition: background 0.15s var(--ease), transform 0.12s var(--ease),
+    opacity 0.15s var(--ease);
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn.primary:hover {
+  background: #7c4ff0;
+}
+
+.btn.ghost {
+  background: var(--elev);
+  color: var(--muted);
+}
+
+.btn.ghost:hover {
+  background: var(--elev-2);
+  color: var(--text);
+}
+
+.btn.danger {
+  color: var(--err);
+}
+
+.btn.danger:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
+
+/* ---------- cabeçalho de view ---------- */
+
+.view-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 18px 0 22px;
+}
+
+.view-head-text {
+  min-width: 0;
+}
+
+.view-eyebrow {
+  margin-bottom: 6px;
+  color: var(--faint);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.view-title {
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+
+.view-sub {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.view-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  padding-bottom: 4px;
+}
+
+.view-head.is-hero .view-title {
+  font-size: 40px;
+}
+
+/* ---------- lista de faixas ---------- */
+
+.track-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.track {
+  display: grid;
+  grid-template-columns: 30px 42px minmax(0, 1fr) minmax(0, 130px) 52px 34px;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  cursor: default;
+  transition: background 0.14s var(--ease);
+}
+
+.track:hover {
+  background: var(--elev);
+}
+
+.track-play {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-full);
+  color: var(--faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.track-play svg {
+  width: 15px;
+  height: 15px;
+}
+
+.track-play .i-play,
+.track-play .i-pause,
+.track-play .eq {
+  display: none;
+}
+
+.track:hover .track-play .idx {
+  display: none;
+}
+
+.track:hover .track-play .i-play {
+  display: block;
+  color: var(--text);
+}
+
+.track.is-playing .track-play .idx,
+.track.is-playing .track-play .i-play {
+  display: none;
+}
+
+.track.is-playing .track-play .eq {
+  display: flex;
+}
+
+.track.is-playing:hover .track-play .eq {
+  display: none;
+}
+
+.track.is-playing:hover .track-play .i-pause {
+  display: block;
+  color: var(--text);
+}
+
+.track.is-playing:hover .track-play .i-play {
+  display: none;
+}
+
+.track.is-playing .track-title {
+  color: var(--accent-2);
+}
+
+.track-art {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  overflow: hidden;
+  border-radius: var(--r-xs);
+  background: var(--elev-2);
+}
+
+.track-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.track-info {
+  min-width: 0;
+}
+
+.track-title {
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.track-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.track-sub .sep {
+  color: var(--faint);
+}
+
+.track-genre {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.track-dur {
+  color: var(--faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.track-more {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-xs);
+  color: var(--faint);
+  opacity: 0;
+  transition: opacity 0.14s var(--ease), background 0.14s var(--ease);
+}
+
+.track:hover .track-more,
+.track-more:focus-visible {
+  opacity: 1;
+}
+
+.track-more:hover {
+  background: var(--elev-2);
+  color: var(--text);
+}
+
+.track-more svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* equalizador da faixa tocando */
+
+.eq {
+  align-items: flex-end;
+  gap: 2px;
+  height: 13px;
+}
+
+.eq span {
+  width: 2.5px;
+  border-radius: 2px;
+  background: var(--accent-2);
+  animation: eq 0.9s ease-in-out infinite;
+}
+
+.eq span:nth-child(1) { height: 55%; animation-delay: -0.2s; }
+.eq span:nth-child(2) { height: 100%; animation-delay: -0.55s; }
+.eq span:nth-child(3) { height: 70%; animation-delay: -0.35s; }
+
+.track.is-paused .eq span {
+  animation-play-state: paused;
+}
+
+@keyframes eq {
+  0%, 100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1); }
+}
+
+/* ---------- chips de sugestão ---------- */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.chip {
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--elev);
+  color: var(--muted);
+  font-size: 12.5px;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease),
+    border-color 0.15s var(--ease);
+}
+
+.chip:hover {
+  border-color: var(--line-strong);
+  background: var(--elev-2);
+  color: var(--text);
+}
+
+/* ---------- estados vazios ---------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 80px 20px;
+  text-align: center;
+}
+
+.empty-ico {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: var(--elev);
+  color: var(--faint);
+}
+
+.empty-ico svg {
+  width: 22px;
+  height: 22px;
+}
+
+.empty-title {
+  font-size: 15px;
+  font-weight: 550;
+}
+
+.empty-text {
+  max-width: 380px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ---------- skeleton ---------- */
+
+.skeleton-row {
+  display: grid;
+  grid-template-columns: 30px 42px minmax(0, 1fr) 90px;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+}
+
+.sk {
+  height: 12px;
+  border-radius: var(--r-xs);
+  background: linear-gradient(90deg, var(--elev) 25%, var(--elev-2) 37%, var(--elev) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+.sk.art {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--r-xs);
+}
+
+.sk.w-60 { width: 60%; }
+.sk.w-40 { width: 40%; }
+.sk.w-25 { width: 25%; }
+
+@keyframes shimmer {
+  from { background-position: 100% 50%; }
+  to { background-position: 0 50%; }
+}
+
+/* ---------- menu popover ---------- */
+
+.menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 208px;
+  padding: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--elev);
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.7);
+  animation: pop 0.14s var(--ease);
+}
+
+@keyframes pop {
+  from { transform: scale(0.96); opacity: 0; }
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-xs);
+  color: var(--muted);
+  font-size: 13px;
+  text-align: left;
+}
+
+.menu-item:hover {
+  background: var(--elev-2);
+  color: var(--text);
+}
+
+.menu-item svg {
+  width: 15px;
+  height: 15px;
+  opacity: 0.8;
+}
+
+.menu-item.danger:hover {
+  color: var(--err);
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--line);
+}
+
+.menu-label {
+  padding: 7px 10px 4px;
+  color: var(--faint);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ---------- toasts ---------- */
+
+.toasts {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--player-h) + 18px);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.toast {
+  max-width: min(90vw, 460px);
+  padding: 10px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-full);
+  background: var(--elev-2);
+  color: var(--text);
+  font-size: 12.5px;
+  box-shadow: 0 14px 30px -10px rgba(0, 0, 0, 0.8);
+  animation: toast-in 0.2s var(--ease);
+}
+
+.toast.error {
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.toast.success {
+  border-color: rgba(52, 211, 153, 0.35);
+}
+
+.toast.out {
+  animation: toast-out 0.2s var(--ease) forwards;
+}
+
+@keyframes toast-in {
+  from { transform: translateY(8px); opacity: 0; }
+}
+
+@keyframes toast-out {
+  to { transform: translateY(6px); opacity: 0; }
+}
+
+/* ---------- dialog ---------- */
+
+.dialog {
+  width: min(400px, 92vw);
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 30px 70px -20px rgba(0, 0, 0, 0.9);
+}
+
+.dialog::backdrop {
+  background: rgba(5, 5, 8, 0.65);
+  backdrop-filter: blur(3px);
+}
+
+.dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 24px;
+}
+
+.dialog h2 {
+  font-size: 17px;
+}
+
+.dialog-desc {
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.dialog input {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--elev);
+  outline: none;
+  font-size: 13.5px;
+}
+
+.dialog input:focus {
+  border-color: var(--accent);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+/* ---------- badge ---------- */
+
+.badge {
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  background: var(--elev-2);
+  color: var(--faint);
+  font-size: 10.5px;
+  font-weight: 550;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .track { grid-template-columns: 30px 42px minmax(0, 1fr) 46px 30px; }
+  .track-genre { display: none; }
+}
+
+@media (max-width: 560px) {
+  .view-title { font-size: 24px; }
+  .view-head.is-hero .view-title { font-size: 30px; }
+  .track-sub .sep,
+  .track-sub .plays { display: none; }
+}

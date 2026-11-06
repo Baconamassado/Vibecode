@@ -1,0 +1,390 @@
+/* ============================================================
+   Bakobtify — player bar, barras de progresso, widget dock
+   ============================================================ */
+
+.player {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(320px, 2fr) minmax(150px, 1fr);
+  align-items: center;
+  gap: 18px;
+  height: var(--player-h);
+  padding: 0 20px;
+  border-top: 1px solid var(--line);
+  background: rgba(12, 12, 15, 0.86);
+  backdrop-filter: blur(18px) saturate(140%);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ---------- bloco esquerdo ---------- */
+
+.now {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.now-art {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--r-xs);
+  background: var(--elev-2);
+  color: var(--faint);
+}
+
+.now-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.now-art svg {
+  width: 18px;
+  height: 18px;
+}
+
+.now-meta {
+  min-width: 0;
+}
+
+.now-title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.now-artist {
+  overflow: hidden;
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#now-fav.is-on {
+  color: var(--accent-2);
+}
+
+#now-fav.is-on svg {
+  fill: currentColor;
+}
+
+/* ---------- centro: controles ---------- */
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.control-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.play-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--text);
+  color: #0a0a0c;
+  transition: transform 0.14s var(--ease), background 0.14s var(--ease),
+    opacity 0.14s var(--ease);
+}
+
+.play-btn:hover:not(:disabled) {
+  transform: scale(1.06);
+  background: #fff;
+}
+
+.play-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.play-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.play-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+.play-btn .ico-pause,
+.play-btn.is-playing .ico-play {
+  display: none;
+}
+
+.play-btn.is-playing .ico-pause {
+  display: block;
+}
+
+.icon-btn.is-on {
+  color: var(--accent-2);
+}
+
+.icon-btn.is-on::after {
+  content: "";
+  position: absolute;
+  bottom: 1px;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--accent-2);
+  transform: translateX(-50%);
+}
+
+/* ---------- barras ---------- */
+
+.seek {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.time {
+  min-width: 34px;
+  color: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.bar {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: var(--elev-2);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.bar:hover .bar-knob,
+.bar.is-dragging .bar-knob {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  border-radius: inherit;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.bar:hover .bar-fill {
+  background: var(--accent-2);
+}
+
+.bar-buffer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.bar-knob {
+  position: absolute;
+  top: 50%;
+  left: 0%;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.6);
+  transition: opacity 0.14s var(--ease), transform 0.14s var(--ease);
+  pointer-events: none;
+}
+
+/* ---------- direita ---------- */
+
+.extra {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.volume-bar {
+  width: 96px;
+  flex: none;
+}
+
+/* ---------- host oculto do embed (fallback de áudio) ---------- */
+
+.widget-dock {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 2px;
+  height: 2px;
+  overflow: hidden;
+  opacity: 0.01;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.widget-dock[hidden] {
+  display: none;
+}
+
+/* quando a Widget API falha, o player oficial aparece de verdade */
+.widget-dock.is-visible {
+  right: 20px;
+  bottom: calc(var(--player-h) + 16px);
+  left: auto;
+  width: 340px;
+  height: auto;
+  overflow: visible;
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 45;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: #000;
+  box-shadow: 0 22px 50px -16px rgba(0, 0, 0, 0.9);
+}
+
+.source-badge {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-full);
+  color: var(--faint);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.source-badge[hidden] {
+  display: none;
+}
+
+/* ---------- itens da fila ---------- */
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: var(--r-xs);
+  color: var(--muted);
+  text-align: left;
+  transition: background 0.14s var(--ease), color 0.14s var(--ease);
+}
+
+.queue-item:hover {
+  background: var(--elev);
+  color: var(--text);
+}
+
+.queue-item.is-active {
+  color: var(--text);
+}
+
+.queue-item.is-active .queue-title {
+  color: var(--accent-2);
+}
+
+.queue-index {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  flex: none;
+  color: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-item .eq {
+  height: 11px;
+}
+
+.queue-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.queue-title,
+.queue-artist {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.queue-title {
+  font-size: 12.5px;
+}
+
+.queue-artist {
+  color: var(--faint);
+  font-size: 11px;
+}
+
+@media (max-width: 720px) {
+  .player {
+    grid-template-columns: 1fr auto;
+    height: var(--player-h);
+    padding: 0 14px;
+  }
+
+  .controls {
+    flex-direction: row;
+    order: 3;
+    grid-column: 1 / -1;
+    gap: 8px;
+  }
+
+  .seek,
+  .extra {
+    display: none;
+  }
+
+  .control-buttons {
+    gap: 6px;
+  }
+
+  .now {
+    grid-column: 1;
+  }
+
+  .widget-dock {
+    left: 0;
+    bottom: 0;
+  }
+
+  .toasts {
+    bottom: calc(var(--player-h) + 62px);
+  }
+}
