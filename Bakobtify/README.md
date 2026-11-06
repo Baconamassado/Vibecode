@@ -4,6 +4,11 @@ Player de música do SoundCloud para Windows. O aplicativo desktop usa C# e
 WinForms com o .NET 10 Desktop x64. O áudio é decodificado pelo Media Foundation
 e enviado ao dispositivo padrão do Windows.
 
+## Em breve
+
+O Bakobtify vai ganhar suporte a mais provedores de música, incluindo Spotify
+e YouTube. Uma versão que funciona sem WebView também está em desenvolvimento.
+
 ## Usar a versão empacotada
 
 Extraia o ZIP inteiro para uma pasta gravável e execute `Bakobtify.exe`.
