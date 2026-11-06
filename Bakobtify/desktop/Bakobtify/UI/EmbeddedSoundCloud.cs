@@ -95,6 +95,14 @@ internal sealed class EmbeddedSoundCloud : Panel
         core.Settings.AreDevToolsEnabled = false;
         core.Settings.AreDefaultContextMenusEnabled = false;
         core.Settings.AreBrowserAcceleratorKeysEnabled = false;
+        core.Settings.AreHostObjectsAllowed = false;
+        core.PermissionRequested += (_, args) =>
+        {
+            if (args.PermissionKind is CoreWebView2PermissionKind.Camera or CoreWebView2PermissionKind.Microphone or
+                CoreWebView2PermissionKind.Geolocation or CoreWebView2PermissionKind.ClipboardRead or
+                CoreWebView2PermissionKind.Notifications or CoreWebView2PermissionKind.OtherSensors)
+                args.State = CoreWebView2PermissionState.Deny;
+        };
         core.NewWindowRequested += (_, args) => args.Handled = true;
         core.DownloadStarting += (_, args) => args.Cancel = true;
         core.IsMuted = true;

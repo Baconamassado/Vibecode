@@ -49,12 +49,18 @@ internal sealed partial class MainForm
         _request = null;
         _results = [];
         _loadError = null;
-        _busy = route.Page == Page.Search || route.Page == Page.Explore && route.Value.Length > 0;
+        _artistProfile = null;
+        _artistTracks.Clear();
+        _artistReleases = null;
+        _artistNextPage = null;
+        _showArtistReleases = false;
+        _busy = route.Page is Page.Artist or Page.Search || route.Page == Page.Explore && route.Value.Length > 0;
         _route = route;
         _search.Text = route.Page == Page.Search ? route.Value : "";
         if (_search.Focused) ActiveControl = null;
         Render(false);
-        if (_busy) _ = LoadResultsAsync(route);
+        if (route.ArtistTrack is not null) _ = LoadArtistAsync(route);
+        else if (_busy) _ = LoadResultsAsync(route);
         else if (route.Page is Page.Home or Page.Explore && _discovery.Count == 0) _ = LoadDiscoveryAsync();
     }
 
@@ -182,6 +188,7 @@ internal sealed partial class MainForm
                 case Page.Search: BuildSearch(_content); break;
                 case Page.Settings: BuildSettings(_content); break;
                 case Page.Diagnostics: BuildDiagnostics(_content); break;
+                case Page.Artist: BuildArtist(_content); break;
             }
             ResizeContent();
         }
@@ -560,6 +567,7 @@ internal sealed partial class MainForm
 
     private int AddTrackRows(Surface page, int y, IReadOnlyList<Track> tracks, long? playlistId = null)
     {
+        var artistPage = _route.Page == Page.Artist;
         var columns = new Surface(Theme.Background);
         Span(page, columns, 0, y, 34);
         PaintDesign(columns, (g, area) =>
@@ -568,8 +576,14 @@ internal sealed partial class MainForm
             var font = Theme.Medium(11);
             Theme.Write(g, "#", new Rectangle(13, 0, 26, 31), font, Theme.Muted);
             Theme.Write(g, "TÍTULO", new Rectangle(61, 0, 110, 31), font, Theme.Muted);
-            Theme.Write(g, _route.Page == Page.Search ? "GÊNERO" : "ÁLBUM",
-                new Rectangle(w * 54 / 100, 0, 68, 31), font, Theme.Muted);
+            var detailHeading = _route.Page switch
+            {
+                Page.Search => "GÊNERO",
+                Page.Artist => "REPRODUÇÕES",
+                _ => "ÁLBUM"
+            };
+            Theme.Write(g, detailHeading, new Rectangle(w * 54 / 100, 0, w * 46 / 100 - 103, 31),
+                font, Theme.Muted);
             Theme.Write(g, "TEMPO", new Rectangle(w - 96, 0, 57, 31), font, Theme.Muted, TextFormatFlags.Right);
             using var pen = new Pen(Theme.Border);
             g.DrawLine(pen, 0, 33, w, 33);
@@ -578,17 +592,25 @@ internal sealed partial class MainForm
         {
             var index = i;
             var track = tracks[index];
+            var linkArtist = !artistPage && CanInspectArtist(track);
             var row = new Surface(Theme.Background);
+            Color RowColor() => _current?.Id == track.Id ? Theme.Surface :
+                row.ClientRectangle.Contains(row.PointToClient(Cursor.Position)) ? Theme.Hover : row.BackColor;
+            void RepaintRow(object? sender, EventArgs args) => row.Invalidate(true);
+
             Span(page, row, 0, y + 38 + i * 53, 51);
             var button = ButtonAt(row, track.Title, "", () => PlayRow(tracks, index, playlistId));
             button.AccessibleDescription = track.ArtistOrUnknown;
+            button.HoverColor = Color.Transparent;
+            button.MouseEnter += RepaintRow;
+            button.MouseLeave += RepaintRow;
             Span(row, button, 0, 0, 51);
             button.DrawContent = (g, r) =>
             {
                 var playing = _current?.Id == track.Id;
+                Theme.Fill(g, new Rectangle(0, 0, r.Width - 1, r.Height - 1), RowColor(), 10);
                 if (playing)
                 {
-                    Theme.Fill(g, new Rectangle(0, 0, r.Width - 1, r.Height - 1), Theme.Surface, 10);
                     Icons.Draw(g, "logo", new Rectangle(11, 16, 17, 17), Theme.Accent);
                 }
                 else
@@ -598,8 +620,14 @@ internal sealed partial class MainForm
                 var genreX = r.Width * 54 / 100;
                 Theme.Write(g, track.Title, new Rectangle(62, 6, genreX - 72, 21),
                     Theme.Medium(14), playing ? Theme.Accent : Theme.Text);
-                Theme.Write(g, track.ArtistOrUnknown, new Rectangle(62, 27, genreX - 72, 17), Theme.Font(13), Theme.Muted);
-                var detail = _route.Page == Page.Search ? track.Genre : track.Album;
+                if (!linkArtist)
+                    Theme.Write(g, track.ArtistOrUnknown, new Rectangle(62, 27, genreX - 72, 17), Theme.Font(13), Theme.Muted);
+                var detail = _route.Page switch
+                {
+                    Page.Search => track.Genre,
+                    Page.Artist => track.PlaybackCount.ToString("N0"),
+                    _ => track.Album
+                };
                 Theme.Write(g, string.IsNullOrWhiteSpace(detail) ? "—" : detail,
                     new Rectangle(genreX, 0, r.Width - genreX - 112, 51), Theme.Font(13), Theme.Muted);
                 Theme.Write(g, track.DurationText, new Rectangle(r.Width - 96, 0, 57, 51), Theme.Font(13),
@@ -609,12 +637,35 @@ internal sealed partial class MainForm
             {
                 if (e.Button == MouseButtons.Right) ShowTrackMenu(button, e.Location, track, playlistId);
             };
+            if (linkArtist)
+            {
+                var artist = ButtonAt(row, track.ArtistOrUnknown, "", () => OpenArtist(track),
+                    "Ver artista: " + track.ArtistOrUnknown);
+                artist.HoverColor = Color.Transparent;
+                artist.PaintBackground = RowColor;
+                artist.DrawContent = (g, r) =>
+                    Theme.Write(g, track.ArtistOrUnknown, r, Theme.Font(13), Theme.Accent);
+                artist.MouseEnter += RepaintRow;
+                artist.MouseLeave += RepaintRow;
+                artist.MouseUp += (_, e) =>
+                {
+                    if (e.Button == MouseButtons.Right) ShowTrackMenu(artist, e.Location, track, playlistId);
+                };
+                void AlignArtist() => Place(artist, 62, 27, Math.Max(1, Units(row.Width) * 54 / 100 - 72), 17);
+                row.SizeChanged += (_, _) => AlignArtist();
+                AlignArtist();
+                artist.BringToFront();
+            }
             var more = ButtonAt(row, "", "more", () => { }, "Opções de " + track.Title);
             more.ForeColor = Theme.Muted;
-            void AlignMenu() => Place(more, Units(row.Width) - 33, 8, 32, 34);
+            more.PaintBackground = RowColor;
+            more.HoverColor = Theme.Border;
+            void AlignMenu() => Place(more, Units(row.Width) - 36, 8, 32, 34);
             row.SizeChanged += (_, _) => AlignMenu();
             AlignMenu();
             more.BringToFront();
+            more.MouseEnter += RepaintRow;
+            more.MouseLeave += RepaintRow;
             more.Click += (_, _) => ShowTrackMenu(more, new Point(0, more.Height), track, playlistId);
         }
         return y + 43 + tracks.Count * 53;

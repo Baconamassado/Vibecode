@@ -11,7 +11,7 @@ namespace Bakobtify.SoundCloud;
 /// Cliente mínimo da <c>api-v2</c>: busca, detalhes e resolução de stream.
 /// Usa um único <see cref="HttpClient"/>, com o mesmo throttle da versão Python.
 /// </summary>
-public sealed class SoundCloudClient : IDisposable
+public sealed partial class SoundCloudClient : IDisposable
 {
     private const string Api = "https://api-v2.soundcloud.com";
     private const string Site = "https://soundcloud.com";
@@ -365,6 +365,7 @@ public sealed class SoundCloudClient : IDisposable
             Artist = Str(user, "username") ?? "Desconhecido",
             CreditedArtists = ReadCreditedArtists(publisher),
             ArtistUrl = Str(user, "permalink_url"),
+            ArtistId = Long(user, "id") is > 0 and var userId ? userId : Long(raw, "user_id"),
             Artwork = artwork,
             DurationMs = Long(raw, "duration"),
             PermalinkUrl = Str(raw, "permalink_url"),

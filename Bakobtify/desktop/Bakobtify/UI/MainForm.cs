@@ -7,8 +7,8 @@ namespace Bakobtify.UI;
 
 internal sealed partial class MainForm : Form
 {
-    private enum Page { Home, Explore, Favorites, History, Playlist, Search, Settings, Diagnostics }
-    private sealed record Route(Page Page, string Value = "", long PlaylistId = 0);
+    private enum Page { Home, Explore, Favorites, History, Playlist, Search, Settings, Diagnostics, Artist }
+    private sealed record Route(Page Page, string Value = "", long PlaylistId = 0, Track? ArtistTrack = null);
 
     private readonly Database _db;
     private readonly SoundCloudClient _client;
@@ -16,7 +16,7 @@ internal sealed partial class MainForm : Form
     private readonly CancellationTokenSource _lifetime = new();
     private readonly ArtworkCache _artwork;
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 180 };
-    private readonly ToolTip _tips = new() { OwnerDraw = true, InitialDelay = 450, ReshowDelay = 150, AutoPopDelay = 5000 };
+    private readonly HoverTips _tips;
     private readonly DiscordPresence _presence = new();
     private readonly Bitmap? _appMark;
     private readonly Surface _header = new(Theme.Background);
@@ -78,7 +78,7 @@ internal sealed partial class MainForm : Form
     private Surface? _content;
     private float _scale = 1;
     private Label _libraryLabel = null!, _queueHeading = null!;
-    private SoftButton _logo = null!, _addPlaylist = null!, _queueClose = null!;
+    private SoftButton _logo = null!, _addPlaylist = null!, _queueClose = null!, _queueClear = null!;
 
     private SoftButton _backButton = null!, _forwardButton = null!, _settings = null!;
     private SoftButton _min = null!, _max = null!, _close = null!;
@@ -92,14 +92,16 @@ internal sealed partial class MainForm : Form
         var startup = appStarted ?? Environment.TickCount64;
         if (databaseElapsed is { } elapsed) LogDiagnostic("Aplicativo", $"Banco local aberto em {elapsed:N0} ms.");
         _db = db;
+        LoadInterfaceMode();
         _client = client;
         _audio = audio;
+        LoadVolumeSettings();
         _allowEmbeddedPlayer = _db.GetMeta(EmbeddedPlayerSetting)?.Value != "off";
         _disableEmbeddedGpu = _db.GetMeta(EmbeddedGpuSetting)?.Value == "off";
         LoadPresenceSettings();
         LoadShortcuts();
         LoadRecommendationCandidates();
-        ConfigureToolTips();
+        _tips = new HoverTips(this, Pixels);
         _artwork = new ArtworkCache(client.Http, _lifetime.Token, () =>
         {
             _content?.Invalidate(true);
@@ -272,6 +274,10 @@ internal sealed partial class MainForm : Form
     private void BuildPlayer()
     {
         _player.Controls.AddRange([_nowTitle, _nowArtist, _seek, _elapsed, _duration, _volume]);
+        _nowArtist.Click += (_, _) =>
+        {
+            if (CanInspectNowArtist && _current is { } track) OpenArtist(track);
+        };
         _cover = ButtonAt(_player, "", "", ToggleQueue, "Faixa atual");
         _localAudio = ButtonAt(_player, "Vincular áudio", "", () =>
         {
@@ -291,12 +297,12 @@ internal sealed partial class MainForm : Form
         _play.Radius = 24;
         _repeatButton = ButtonAt(_player, "", "repeat", CycleRepeat, "Repetição");
         _showQueue = ButtonAt(_player, "", "queue", ToggleQueue, "Fila de reprodução");
-        _mute = ButtonAt(_player, "", "volume", ToggleMute, "Silenciar ou reativar som");
+        _mute = ButtonAt(_player, "", _audio.Muted ? "mute" : "volume", ToggleMute, "Silenciar ou reativar som");
         foreach (var button in new[] { _like, _prev, _next, _repeatButton, _showQueue, _mute })
             button.ForeColor = Theme.Muted;
         _seek.Committed += value => SeekPlayback(PlaybackDuration * value);
         _seek.PreviewChanged += UpdateClock;
-        _volume.Value = _audio.Volume;
+        _volume.Value = _audio.Muted ? 0 : _audio.Volume;
         _volume.Committed += SetVolume;
         _elapsed.TextAlign = ContentAlignment.MiddleRight;
         _player.Paint += (_, e) =>
@@ -312,6 +318,8 @@ internal sealed partial class MainForm : Form
         _queueHeading = Theme.Label("Fila de reprodução", 19, bold: true);
         _queuePane.Controls.AddRange([_queueHeading, _queueItems]);
         _queueClose = ButtonAt(_queuePane, "", "close", ToggleQueue, "Fechar fila");
+        _queueClear = ButtonAt(_queuePane, "Limpar fila", "", ClearQueue);
+        _queueClear.FillColor = Theme.Surface;
         _queuePane.Paint += (_, e) =>
         {
             using var pen = new Pen(Theme.Border);
@@ -353,14 +361,17 @@ internal sealed partial class MainForm : Form
         if (ClientSize.Width < 400 || ClientSize.Height < 180) return;
         // Referência de 1280 x 800. A altura determina a escala dos elementos
         // e a barra lateral acompanha a largura da janela.
-        var scale = Math.Clamp(Math.Min(ClientSize.Height / 800f, ClientSize.Width / 850f), .85f, 2.5f);
+        var baseScale = Math.Clamp(Math.Min(ClientSize.Height / 800f, ClientSize.Width / 850f), .85f, 2.5f)
+            * _interfaceMultiplier;
+        var scale = WindowState == FormWindowState.Maximized ? baseScale * .75f : baseScale;
         var scaleChanged = Math.Abs(scale - _scale) > .001f;
         var oldScroll = scaleChanged ? Units(-_viewport.AutoScrollPosition.Y) : 0;
         _scale = scale;
         const int top = 50, bottom = 84;
         var w = Units(ClientSize.Width);
         var h = Units(ClientSize.Height);
-        var side = Math.Clamp(w * 137 / 1000, 144, 252);
+        var referenceWidth = (int)Math.Round(ClientSize.Width / baseScale);
+        var side = Math.Clamp(referenceWidth * 137 / 1000, 144, 252);
         var body = h - top - bottom;
         var queueWidth = _queuePane.Visible && w - side >= 930 ? 300 : 0;
         var bodyTop = Pixels(top);
@@ -428,7 +439,8 @@ internal sealed partial class MainForm : Form
         Place(_volume, w - 113, 30, 96, 24);
         Place(_queueHeading, 18, 11, 235, 38);
         Place(_queueClose, 252, 12, 30, 30);
-        Place(_queueItems, 10, 54, 280, body - 60);
+        Place(_queueClear, 18, 51, 105, 32);
+        Place(_queueItems, 10, 89, 280, body - 95);
         if (scaleChanged && _content is not null)
         {
             Render(false);
@@ -586,6 +598,7 @@ internal sealed partial class MainForm : Form
         _lifetime.Cancel();
         _request?.Cancel();
         _timer.Dispose();
+        _interfaceAnimation.Dispose();
         _tips.Dispose();
         _artwork.Dispose();
         _audio.Error -= AudioError;

@@ -13,6 +13,9 @@ public sealed class Track
     [JsonPropertyName("artist")] public string? Artist { get; set; }
     [JsonPropertyName("credited_artists")] public string? CreditedArtists { get; set; }
     [JsonPropertyName("artist_url")] public string? ArtistUrl { get; set; }
+    [JsonPropertyName("artist_id")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public long ArtistId { get; set; }
     [JsonPropertyName("artwork")] public string? Artwork { get; set; }
     [JsonPropertyName("duration_ms")] public long DurationMs { get; set; }
     [JsonPropertyName("permalink_url")] public string? PermalinkUrl { get; set; }

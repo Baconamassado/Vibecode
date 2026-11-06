@@ -1,3 +1,4 @@
+using System.Globalization;
 using Bakobtify.Data;
 using Bakobtify.Playback;
 
@@ -10,6 +11,7 @@ internal sealed partial class MainForm
     private bool _embeddedLogged;
     private const string EmbeddedPlayerSetting = "desktop_embedded_player";
     private const string EmbeddedGpuSetting = "desktop_embedded_gpu";
+    private const string VolumeSetting = "desktop_volume";
     private bool _disableEmbeddedGpu;
     private bool _allowEmbeddedPlayer;
     private long? _embeddedPausedAt;
@@ -139,12 +141,12 @@ internal sealed partial class MainForm
         _content?.Invalidate(true);
     }
 
-    private bool _waitingForPlaylistTrack;
+    private long? _playlistWaitRequest;
     private bool _playlistEndedWhileWaiting;
 
     private async void Advance(bool ended)
     {
-        if (_waitingForPlaylistTrack)
+        if (_playlistWaitRequest == _playRequest)
         {
             _playlistEndedWhileWaiting |= ended;
             return;
@@ -163,12 +165,15 @@ internal sealed partial class MainForm
             var request = _playRequest;
             if (NextPlaylistTrack() is null && _relatedLoad is { IsCompleted: false } loading)
             {
-                _waitingForPlaylistTrack = true;
+                _playlistWaitRequest = request;
                 _playlistEndedWhileWaiting = false;
                 try { await loading.WaitAsync(TimeSpan.FromSeconds(5), _lifetime.Token); }
                 catch (TimeoutException) { }
                 catch (OperationCanceledException) when (_closing) { }
-                finally { _waitingForPlaylistTrack = false; }
+                finally
+                {
+                    if (_playlistWaitRequest == request) _playlistWaitRequest = null;
+                }
                 if (_closing || request != _playRequest) return;
                 if (_playlistEndedWhileWaiting)
                 {
@@ -397,6 +402,8 @@ internal sealed partial class MainForm
         var offerLocalAudio = _playState == PlaybackState.Error && _current is not null;
         _localAudio.Visible = offerLocalAudio;
         _nowArtist.Visible = !offerLocalAudio;
+        _nowArtist.Cursor = CanInspectNowArtist ? Cursors.Hand : Cursors.Default;
+        _nowArtist.ForeColor = CanInspectNowArtist ? Theme.Accent : Theme.Muted;
         _nowArtist.Text = _playState switch
         {
             PlaybackState.Loading => _phase,
@@ -443,6 +450,26 @@ internal sealed partial class MainForm
 
     private static string FormatTime(TimeSpan time) => $"{(long)time.TotalMinutes}:{time.Seconds:00}";
 
+    private void LoadVolumeSettings()
+    {
+        if (_db.GetMeta(VolumeSetting)?.Value is not { } saved) return;
+        var parts = saved.Split(':', 2);
+        if (parts.Length != 2 || parts[0] is not ("on" or "off") ||
+            !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var volume) ||
+            !double.IsFinite(volume) || volume is < 0 or > 1)
+            return;
+
+        _audio.Volume = volume;
+        _audio.Muted = parts[0] == "off";
+    }
+
+    private void SaveVolumeSettings() => RunAction(() =>
+    {
+        var sound = _audio.Muted ? "off" : "on";
+        var volume = _audio.Volume.ToString("R", CultureInfo.InvariantCulture);
+        _db.SetMeta(VolumeSetting, $"{sound}:{volume}", double.MaxValue);
+    });
+
     private void SetVolume(double value)
     {
         _audio.Volume = value;
@@ -451,6 +478,7 @@ internal sealed partial class MainForm
         _volume.Value = _audio.Volume;
         _mute.Glyph = "volume";
         _mute.Invalidate();
+        SaveVolumeSettings();
     }
 
     private void ToggleMute()
@@ -459,6 +487,7 @@ internal sealed partial class MainForm
         _embeddedPlayer?.SetVolume(_audio.Muted ? 0 : _audio.Volume);
         _volume.Value = _audio.Muted ? 0 : _audio.Volume;
         UpdatePlayer();
+        SaveVolumeSettings();
     }
 
     private void CycleRepeat()
@@ -484,6 +513,7 @@ internal sealed partial class MainForm
     private void RenderQueue()
     {
         if (!_queuePane.Visible) return;
+        _queueClear.Enabled = _queue.Count > 0;
         var scroll = _queueItems.AutoScrollPosition;
         ClearControls(_queueItems);
         if (_queue.Count == 0)
@@ -512,7 +542,8 @@ internal sealed partial class MainForm
             };
             item.MouseUp += (_, e) =>
             {
-                if (e.Button == MouseButtons.Right) ShowTrackMenu(item, e.Location, track);
+                if (e.Button == MouseButtons.Right)
+                    ShowTrackMenu(item, e.Location, track, removeFromQueue: () => RemoveFromQueue(index, track));
             };
         }
         _queueItems.AutoScrollPosition = new Point(-scroll.X, -scroll.Y);
@@ -524,5 +555,63 @@ internal sealed partial class MainForm
         RenderQueue();
         UpdatePlayer();
         Notify("Faixa adicionada à fila.");
+    }
+
+    private void ClearQueue()
+    {
+        if (_queue.Count == 0) return;
+        _queue.Clear();
+        _playedIndices.Clear();
+        _shuffledNext = -1;
+        SetPlaylistContext(null, []);
+        StopQueuePlayback();
+        RefreshQueue();
+    }
+
+    private void RemoveFromQueue(int index, Track track)
+    {
+        if (index >= _queue.Count || !ReferenceEquals(_queue[index], track)) return;
+        _queue.RemoveAt(index);
+        _shuffledNext = -1;
+        _playedIndices.RemoveAll(previous => previous == index);
+        for (var i = 0; i < _playedIndices.Count; i++)
+            if (_playedIndices[i] > index) _playedIndices[i]--;
+        if (_queue.All(item => item.Id != track.Id)) _automaticTracks.Remove(track.Id);
+
+        if (index == _index)
+        {
+            StopQueuePlayback();
+            if (index < _queue.Count)
+            {
+                PlayAt(index, false);
+                return;
+            }
+        }
+        else if (index < _index) _index--;
+
+        if (_queue.Count == 0) SetPlaylistContext(null, []);
+        if (_playState != PlaybackState.Playing) _audio.PrepareNext(null, null);
+        RefreshQueue();
+    }
+
+    private void StopQueuePlayback()
+    {
+        ++_playRequest;
+        _relatedRequest?.Cancel();
+        _relatedLoad = null;
+        _playlistEndedWhileWaiting = false;
+        _audio.Stop();
+        CloseEmbeddedPlayer();
+        _parkedEmbedded = null;
+        _index = -1;
+        _current = null;
+        _playState = PlaybackState.Idle;
+    }
+
+    private void RefreshQueue()
+    {
+        UpdatePlayer();
+        RenderQueue();
+        _content?.Invalidate(true);
     }
 }

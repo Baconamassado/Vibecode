@@ -1,4 +1,5 @@
 using Bakobtify.Data;
+using System.Drawing.Drawing2D;
 
 namespace Bakobtify.UI;
 
@@ -57,10 +58,11 @@ internal sealed partial class MainForm
         Notify("Histórico limpo.");
     }
 
-    private void ShowTrackMenu(Control anchor, Point point, Track track, long? playlistId = null) =>
-        CreateTrackMenu(track, playlistId).Show(anchor, point);
+    private void ShowTrackMenu(Control anchor, Point point, Track track, long? playlistId = null,
+        Action? removeFromQueue = null) =>
+        CreateTrackMenu(track, playlistId, removeFromQueue).Show(anchor, point);
 
-    private ContextMenuStrip CreateTrackMenu(Track track, long? playlistId)
+    private ContextMenuStrip CreateTrackMenu(Track track, long? playlistId, Action? removeFromQueue = null)
     {
         var menu = CreateMenu();
         MenuItem(menu.Items, "Tocar agora", () =>
@@ -83,15 +85,17 @@ internal sealed partial class MainForm
             }
         }, "play");
         MenuItem(menu.Items, "Adicionar à fila", () => AddToQueue(track), "queue");
+        if (removeFromQueue is not null)
+            MenuItem(menu.Items, "Tirar da fila", removeFromQueue, "close");
+        if (CanInspectArtist(track))
+            MenuItem(menu.Items, "Ver artista", () => OpenArtist(track), "link");
         var favorite = IsFavorite(track);
         MenuItem(menu.Items, favorite ? "Remover das músicas curtidas" : "Curtir faixa",
             () => ToggleFavorite(track), favorite ? "liked" : "heart");
         var playlists = MenuItem(menu.Items, "Adicionar à playlist", glyph: "list");
-        playlists.DropDown = new ToolStripDropDownMenu
-        {
-            BackColor = menu.BackColor, ForeColor = menu.ForeColor, Font = menu.Font,
-            Renderer = menu.Renderer, ShowImageMargin = false, ShowCheckMargin = false
-        };
+        var playlistMenu = new ToolStripDropDownMenu { Renderer = menu.Renderer };
+        StyleMenu(playlistMenu);
+        playlists.DropDown = playlistMenu;
         MenuItem(playlists.DropDownItems, "Nova playlist…", () => NewPlaylist(track), "plus");
         if (_playlists.Count > 0) playlists.DropDownItems.Add(new ToolStripSeparator());
         foreach (var playlist in _playlists)
@@ -176,12 +180,8 @@ internal sealed partial class MainForm
 
     private ContextMenuStrip CreateMenu()
     {
-        var menu = new ContextMenuStrip
-        {
-            BackColor = Theme.Surface, ForeColor = Theme.Text, Font = Theme.Font(Pixels(14)),
-            Renderer = new ContextMenuRenderer(_scale),
-            ShowImageMargin = false, ShowCheckMargin = false
-        };
+        var menu = new ContextMenuStrip { Renderer = new ContextMenuRenderer(_scale) };
+        StyleMenu(menu);
         menu.Closed += (_, _) =>
         {
             if (_closing || !IsHandleCreated) menu.Dispose();
@@ -190,13 +190,36 @@ internal sealed partial class MainForm
         return menu;
     }
 
+    private void StyleMenu(ToolStripDropDownMenu menu)
+    {
+        menu.BackColor = Theme.Surface;
+        menu.ForeColor = Theme.Text;
+        menu.Font = Theme.Font(Pixels(14));
+        menu.ShowImageMargin = false;
+        menu.ShowCheckMargin = false;
+        menu.Padding = new Padding(Pixels(5));
+        // O submenu se ancora nos limites do item, inclusive na parte que
+        // ficaria fora da janela se o WinForms dimensionasse só pelo texto.
+        menu.MinimumSize = new Size(Pixels(ContextMenuItemWidth) + menu.Padding.Horizontal, 0);
+        void UpdateShape(object? sender, EventArgs args)
+        {
+            if (menu.ClientSize.Width <= 0 || menu.ClientSize.Height <= 0) return;
+            using var shape = Theme.Rounded(menu.ClientRectangle, Pixels(12));
+            menu.Region = new Region(shape);
+        }
+        menu.SizeChanged += UpdateShape;
+        menu.Opening += UpdateShape;
+    }
+
+    private const int ContextMenuItemWidth = 280;
+
     private ToolStripMenuItem MenuItem(ToolStripItemCollection items, string label, Action? click = null,
         string glyph = "", bool destructive = false)
     {
         var item = new ToolStripMenuItem(label.Replace("&", "&&"))
         {
             AccessibleName = label, Tag = glyph, ForeColor = destructive ? Theme.Pink : Theme.Text,
-            AutoSize = false, Size = new Size(Pixels(280), Pixels(36))
+            AutoSize = false, Size = new Size(Pixels(ContextMenuItemWidth), Pixels(36))
         };
         if (click is not null) item.Click += (_, _) => RunAction(click);
         items.Add(item);
@@ -212,33 +235,40 @@ internal sealed partial class MainForm
 
         protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
         {
-            using var border = new Pen(Theme.Border);
-            e.Graphics.DrawRectangle(border, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
+            var bounds = Rectangle.Inflate(e.ToolStrip.ClientRectangle, -1, -1);
+            if (bounds.Width <= 0 || bounds.Height <= 0) return;
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Theme.Outline(e.Graphics, bounds, Theme.Border, Px(11));
         }
 
         protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
         {
             var bounds = new Rectangle(Point.Empty, e.Item.Size);
-            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            if (e.Item.Selected || e.Item.Pressed)
-                Theme.Fill(e.Graphics, Rectangle.Inflate(bounds, -Px(5), -Px(2)), Theme.Hover, Px(7));
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            var highlighted = e.Item.Enabled && (e.Item.Selected || e.Item.Pressed);
+            var color = e.Item.ForeColor == Theme.Pink ? Theme.Pink : Theme.Accent;
+            if (highlighted)
+            {
+                Theme.Fill(e.Graphics, Rectangle.Inflate(bounds, -Px(1), -Px(2)), Theme.Hover, Px(8));
+                Theme.Fill(e.Graphics, new Rectangle(Px(5), Px(10), Px(2), bounds.Height - Px(20)), color, Px(1));
+            }
             if (e.Item.Tag is string glyph && glyph.Length > 0)
                 Icons.Draw(e.Graphics, glyph, new Rectangle(Px(14), (bounds.Height - Px(17)) / 2, Px(17), Px(17)),
-                    e.Item.Selected || e.Item.Pressed ? Theme.Accent : Theme.Muted);
+                    highlighted || e.Item.ForeColor == Theme.Pink ? color : Theme.Muted);
         }
 
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
             var width = Math.Max(0, e.Item.Width - Px(65));
             TextRenderer.DrawText(e.Graphics, e.Item.AccessibleName ?? e.Text, e.TextFont,
-                new Rectangle(Px(42), 0, width, e.Item.Height), e.Item.ForeColor,
+                new Rectangle(Px(42), 0, width, e.Item.Height), e.Item.Enabled ? e.Item.ForeColor : Theme.Muted,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
                 TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
         }
 
         protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
         {
-            e.ArrowColor = Theme.Muted;
+            e.ArrowColor = e.Item?.Selected == true ? Theme.Accent : Theme.Muted;
             base.OnRenderArrow(e);
         }
 

@@ -152,6 +152,8 @@ internal sealed class SoftButton : Button
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal Color? GlyphColor { get; set; }
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal Func<Color>? PaintBackground { get; set; }
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal Action<Graphics, Rectangle>? DrawContent { get; set; }
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal bool AlignLeft { get; set; }
@@ -181,7 +183,7 @@ internal sealed class SoftButton : Button
         // O buffer é reutilizado entre controles. Cubra todos os pixels antes
         // de suavizar as bordas, inclusive a primeira e a última coluna.
         g.SmoothingMode = SmoothingMode.None;
-        Theme.Fill(g, ClientRectangle, BackColor);
+        Theme.Fill(g, ClientRectangle, PaintBackground?.Invoke() ?? BackColor);
         var area = Theme.DesignArea(g, ClientSize, PaintScale);
         var rect = new Rectangle(0, 0, area.Width - 1, area.Height - 1);
         var fill = Enabled && _hover ? HoverColor : FillColor;

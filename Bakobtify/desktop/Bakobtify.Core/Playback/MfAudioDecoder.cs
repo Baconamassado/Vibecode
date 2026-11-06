@@ -23,6 +23,7 @@ public static class MfAudioDecoder
 {
     private const uint AllStreams = MfGuids.MF_SOURCE_READER_ALL_STREAMS;
     private const uint FirstAudio = MfGuids.MF_SOURCE_READER_FIRST_AUDIO_STREAM;
+    private const long MaxWavDataBytes = uint.MaxValue - 36L;
 
     public static DecodedAudio DecodeToWav(
         string inputPath,
@@ -88,6 +89,8 @@ public static class MfAudioDecoder
                     var length = CopySample(sample, ref buffer);
                     if (length > 0)
                     {
+                        if (length > MaxWavDataBytes - dataBytes)
+                            throw new InvalidDataException("O áudio decodificado excedeu o limite do formato WAV.");
                         output.Write(buffer, 0, length);
                         dataBytes += length;
                     }
