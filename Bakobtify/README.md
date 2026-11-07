@@ -7,7 +7,7 @@ e enviado ao dispositivo padrão do Windows.
 ## Em breve
 
 O Bakobtify vai ganhar suporte a mais provedores de música, incluindo Spotify
-e YouTube. Uma versão que funciona sem WebView também está em desenvolvimento.
+e YouTube. Uma versão que funciona sem WebView também está em desenvolvimento (O desenvolvimento dessa versão é lento por causa do processo necessario, o webview cobre esse processo mas sem ele vai desacelerar bastante o desenvolvimento até estar pronto).
 
 ## Usar a versão empacotada
 
