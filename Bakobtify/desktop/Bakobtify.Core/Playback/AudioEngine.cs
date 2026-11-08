@@ -65,7 +65,7 @@ public sealed class AudioEngine : IDisposable
     public bool LocalAcceleration { get; set; } = true;
 
     private string? CachedPath(Track track, string? localPath) =>
-        LocalAcceleration && localPath is null ? LocalAudioCache.PathFor(track.Id) : null;
+        LocalAcceleration && localPath is null && track.Provider == "SoundCloud" ? LocalAudioCache.PathFor(track.Id) : null;
 
     private bool HasCachedAudio(Track track, string? localPath) =>
         CachedPath(track, localPath) is { } path && File.Exists(path) && LocalAudioCache.Read(path, touch: false) is not null;
@@ -216,7 +216,7 @@ public sealed class AudioEngine : IDisposable
                 player.Play();
                 _player = player;
                 _wavPath = wavPath;
-                _retainTrackId = wavPath is not null && localPath is null && !prepared.Preview && LocalAcceleration
+                _retainTrackId = wavPath is not null && !prepared.Preview && CachedPath(track, localPath) is not null
                     ? track.Id : null;
                 wavPath = null;
                 _isPreview = prepared.Preview;
@@ -236,7 +236,7 @@ public sealed class AudioEngine : IDisposable
         {
             var message = localPath is not null && ex is IOException
                 ? "Não foi possível ler ou preparar o arquivo de áudio vinculado."
-                : PlaybackMessage(ex, "conexão com o SoundCloud");
+                : PlaybackMessage(ex, $"conexão com o {track.Provider}");
             OnError(generation, message);
         }
         finally
@@ -298,7 +298,7 @@ public sealed class AudioEngine : IDisposable
             }
             token.ThrowIfCancellationRequested();
             if (wavPath is null)
-                throw new PlaybackUnavailableException(lastFailure ?? "O SoundCloud não forneceu áudio para esta faixa.");
+                throw new PlaybackUnavailableException(lastFailure ?? $"O {track.Provider} não forneceu áudio para esta faixa.");
 
             var result = (wavPath, preview);
             wavPath = null;
@@ -462,7 +462,7 @@ public sealed class AudioEngine : IDisposable
         HttpRequestException or OperationCanceledException => $"A conexão foi interrompida durante a etapa de {stage}.",
         System.Runtime.InteropServices.COMException => $"O Windows recusou este formato de áudio (0x{error.HResult:X8}).",
         System.Security.Cryptography.CryptographicException => "O SoundCloud entregou um segmento de áudio criptografado inválido.",
-        InvalidDataException => "O SoundCloud entregou um arquivo de áudio ou uma playlist inválida.",
+        InvalidDataException => "O provedor entregou um arquivo de áudio ou uma playlist inválida.",
         IOException or UnauthorizedAccessException => "O cache de áudio está inacessível ou não há espaço para a faixa.",
         _ => "A reprodução foi interrompida por um erro no player."
     };

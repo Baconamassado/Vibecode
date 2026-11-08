@@ -103,6 +103,7 @@ public sealed partial class SoundCloudClient : IDisposable
 
     public async Task<List<Track>> GetRelatedTracksAsync(string trackId, CancellationToken ct = default)
     {
+        if (IsExternalTrack(trackId)) return [];
         const int limit = 20;
         using var doc = await CallApiAsync($"/tracks/{ValidateId(trackId)}/related",
             new() { ["limit"] = limit.ToString(CultureInfo.InvariantCulture), ["linked_partitioning"] = "1" },
@@ -155,6 +156,13 @@ public sealed partial class SoundCloudClient : IDisposable
     public async IAsyncEnumerable<StreamInfo> ResolveStreamsAsync(string trackId,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
+        if (IsExternalTrack(trackId))
+        {
+            ct.ThrowIfCancellationRequested();
+            yield return ResolveCatalogStream(trackId);
+            yield break;
+        }
+
         using var doc = await CallApiAsync($"/tracks/{ValidateId(trackId)}", null, ct).ConfigureAwait(false);
         var raw = doc.RootElement;
         var permalink = Str(raw, "permalink_url");
@@ -163,7 +171,7 @@ public sealed partial class SoundCloudClient : IDisposable
             throw new PlaybackUnavailableException("O SoundCloud restringiu a reprodução desta faixa.", permalink)
                 { ConfirmedByMetadata = true };
 
-        var candidates = new List<(string Kind, Uri Endpoint, string Mime, int Priority, bool Preview)>();
+        var candidates = new List<(string Kind, Uri Endpoint, string Mime, int Priority, int Bitrate, bool Preview)>();
         var previewOnly = Str(raw, "access") == "preview" || Str(raw, "policy") == "SNIP";
         var hasProtected = false;
         if (raw.TryGetProperty("media", out var media) && media.ValueKind == JsonValueKind.Object &&
@@ -197,10 +205,10 @@ public sealed partial class SoundCloudClient : IDisposable
                     mime.Contains("mpegurl", StringComparison.OrdinalIgnoreCase));
                 if (!aac && !mp3 && !genericPlaylist) continue;
                 if (!hls && protocol is not ("progressive" or "http")) continue;
-                var priority = hls && aac ? (preset.Contains("96k", StringComparison.Ordinal) ? 1 : 0) :
-                    !hls ? 2 : mp3 ? 3 : 4;
+                var priority = hls && aac ? 0 : !hls ? 1 : mp3 ? 2 : 3;
+                var bitrate = hls && aac ? PresetBitrate(preset) : 0;
                 candidates.Add((hls ? "hls" : "progressive", endpoint,
-                    aac ? "audio/mp4" : mp3 ? "audio/mpeg" : "", priority + (preview ? 10 : 0), preview));
+                    aac ? "audio/mp4" : mp3 ? "audio/mpeg" : "", priority, bitrate, preview));
             }
         }
 
@@ -213,7 +221,9 @@ public sealed partial class SoundCloudClient : IDisposable
         var authorization = Str(raw, "track_authorization");
         SoundCloudException? lastFailure = null;
         var yielded = false;
-        foreach (var (kind, endpoint, mime, _, preview) in candidates.Distinct().OrderBy(candidate => candidate.Priority))
+        foreach (var (kind, endpoint, mime, _, _, preview) in candidates.Distinct()
+            .OrderBy(candidate => candidate.Preview).ThenBy(candidate => candidate.Priority)
+            .ThenByDescending(candidate => candidate.Bitrate))
         {
             var url = endpoint.AbsoluteUri;
             if (!string.IsNullOrEmpty(authorization) && !endpoint.Query.Contains("track_authorization=", StringComparison.Ordinal))
@@ -240,6 +250,17 @@ public sealed partial class SoundCloudClient : IDisposable
             throw new SoundCloudException(lastFailure is null
                 ? "O SoundCloud não retornou o endereço do áudio."
                 : $"O SoundCloud recusou o endereço do áudio. {lastFailure.Message}");
+    }
+
+    private static int PresetBitrate(string preset)
+    {
+        foreach (var part in preset.Split('_'))
+        {
+            if (part.EndsWith('k') && int.TryParse(part.AsSpan(0, part.Length - 1), NumberStyles.None,
+                    CultureInfo.InvariantCulture, out var bitrate))
+                return bitrate;
+        }
+        return 0;
     }
 
     // -- HTTP ----------------------------------------------------------
@@ -366,7 +387,7 @@ public sealed partial class SoundCloudClient : IDisposable
             CreditedArtists = ReadCreditedArtists(publisher),
             ArtistUrl = Str(user, "permalink_url"),
             ArtistId = Long(user, "id") is > 0 and var userId ? userId : Long(raw, "user_id"),
-            Artwork = artwork,
+            Artwork = CatalogUri(artwork, "soundcloud"),
             DurationMs = Long(raw, "duration"),
             PermalinkUrl = Str(raw, "permalink_url"),
             Genre = Str(raw, "genre") ?? "",

@@ -98,6 +98,8 @@ internal static class Theme
 internal sealed class ThemeLabel : Label
 {
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal float TextOpacity { get; set; } = 1;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal float PaintScale { get; set; } = 1;
 
     public ThemeLabel() => SetStyle(ControlStyles.Opaque | ControlStyles.ResizeRedraw |
@@ -123,7 +125,7 @@ internal sealed class ThemeLabel : Label
             ContentAlignment.MiddleRight => TextFormatFlags.Right,
             _ => TextFormatFlags.Left
         };
-        Theme.Write(g, Text, area, Font, ForeColor, alignment);
+        Theme.Write(g, Text, area, Font, Color.FromArgb((int)(ForeColor.A * TextOpacity), ForeColor), alignment);
     }
 }
 
@@ -159,6 +161,8 @@ internal sealed class SoftButton : Button
     internal bool AlignLeft { get; set; }
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal float PaintScale { get; set; } = 1;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal float Reveal { get; set; } = 1;
     private bool _hover;
 
     public SoftButton()
@@ -191,7 +195,13 @@ internal sealed class SoftButton : Button
         if (Stroke.A != 0 && rect.Width > 0 && rect.Height > 0) Theme.Outline(g, rect, Stroke, Radius);
         if (Focused && ShowFocusCues && area.Width > 8 && area.Height > 8)
             Theme.Outline(g, Rectangle.Inflate(rect, -3, -3), Theme.Accent, Radius);
-        if (DrawContent is not null) { DrawContent(g, area); return; }
+        if (DrawContent is not null)
+        {
+            DrawContent(g, area);
+            if (Reveal < 1)
+                Theme.Fill(g, area, Color.FromArgb((int)(255 * (1 - Reveal)), BackColor));
+            return;
+        }
 
         var textWidth = Text.Length == 0 ? 0 : TextRenderer.MeasureText(Text, Font,
             Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;

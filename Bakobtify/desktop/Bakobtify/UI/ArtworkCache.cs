@@ -2,7 +2,7 @@ using System.Drawing.Drawing2D;
 
 namespace Bakobtify.UI;
 
-internal sealed class ArtworkCache(HttpClient http, CancellationToken lifetime, Action repaint) : IDisposable
+internal sealed class ArtworkCache(HttpClient http, CancellationToken lifetime) : IDisposable
 {
     private const int Capacity = 96;
     private const long DecodedByteBudget = 12 * 1024 * 1024;
@@ -10,20 +10,21 @@ internal sealed class ArtworkCache(HttpClient http, CancellationToken lifetime, 
     private readonly SemaphoreSlim _downloads = new(4);
     private readonly Dictionary<string, (Image? Image, LinkedListNode<string> Node)> _cache = new();
     private readonly LinkedList<string> _recent = new();
-    private readonly HashSet<string> _pending = new();
+    private readonly Dictionary<string, HashSet<Control>> _pending = new();
     private bool _disposed;
 
-    public void Draw(Graphics g, Rectangle bounds, string? url, Color color, int radius = 10, bool heart = false)
+    public void Draw(Control owner, Graphics g, Rectangle bounds, string? url, Color color,
+        int radius = 10, bool heart = false)
     {
         if (bounds.Width <= 0 || bounds.Height <= 0) return;
         var state = g.Save();
         g.SmoothingMode = SmoothingMode.AntiAlias;
         using var clip = Theme.Rounded(bounds, radius);
         g.SetClip(clip, CombineMode.Intersect);
-        if (Get(url) is { } image)
+        if (Get(url, owner) is { } image)
         {
             var side = Math.Min(image.Width, image.Height);
-            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.InterpolationMode = InterpolationMode.HighQualityBilinear;
             g.DrawImage(image, bounds, (image.Width - side) / 2, (image.Height - side) / 2,
                 side, side, GraphicsUnit.Pixel);
         }
@@ -54,7 +55,7 @@ internal sealed class ArtworkCache(HttpClient http, CancellationToken lifetime, 
         g.Restore(state);
     }
 
-    private Image? Get(string? url)
+    private Image? Get(string? url, Control owner)
     {
         if (_disposed || !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
             uri.Scheme != Uri.UriSchemeHttps || !uri.Host.EndsWith(".sndcdn.com", StringComparison.OrdinalIgnoreCase))
@@ -65,7 +66,13 @@ internal sealed class ArtworkCache(HttpClient http, CancellationToken lifetime, 
             _recent.AddLast(hit.Node);
             return hit.Image;
         }
-        if (_pending.Add(uri.AbsoluteUri)) _ = LoadAsync(uri);
+        if (_pending.TryGetValue(uri.AbsoluteUri, out var waiting))
+            waiting.Add(owner);
+        else
+        {
+            _pending.Add(uri.AbsoluteUri, [owner]);
+            _ = LoadAsync(uri);
+        }
         return null;
     }
 
@@ -109,7 +116,7 @@ internal sealed class ArtworkCache(HttpClient http, CancellationToken lifetime, 
         catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException
             or ArgumentException or OutOfMemoryException or System.Runtime.InteropServices.ExternalException) { }
 
-        _pending.Remove(uri.AbsoluteUri);
+        _pending.Remove(uri.AbsoluteUri, out var waiting);
         if (_disposed || lifetime.IsCancellationRequested) { thumbnail?.Dispose(); return; }
         _cache[uri.AbsoluteUri] = (thumbnail, _recent.AddLast(uri.AbsoluteUri));
         _decodedBytes += BitmapBytes(thumbnail);
@@ -121,7 +128,9 @@ internal sealed class ArtworkCache(HttpClient http, CancellationToken lifetime, 
             _cache.Remove(first.Value);
             _recent.RemoveFirst();
         }
-        if (thumbnail is not null) repaint();
+        if (thumbnail is not null && waiting is not null)
+            foreach (var owner in waiting)
+                if (!owner.IsDisposed) owner.Invalidate();
     }
 
     private static long BitmapBytes(Image? image) => image is null ? 0 : (long)image.Width * image.Height * 4;
@@ -131,6 +140,7 @@ internal sealed class ArtworkCache(HttpClient http, CancellationToken lifetime, 
         _disposed = true;
         foreach (var item in _cache.Values) item.Image?.Dispose();
         _cache.Clear();
+        _pending.Clear();
         _recent.Clear();
         _decodedBytes = 0;
     }

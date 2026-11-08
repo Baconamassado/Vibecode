@@ -10,7 +10,8 @@ namespace Bakobtify.Playback;
 public sealed class WaveOutPlayer : IDisposable
 {
     private const int BufferCount = 6;
-    private const int BufferMilliseconds = 80;
+    private const int BufferMilliseconds = 40;
+    private const float PeakHeadroom = 0.89125094f; // 1 dB de margem abaixo da escala cheia.
     private const uint WaveMapper = 0xFFFFFFFF;
     private const uint CallbackNull = 0;
     private const uint WhdrDone = 0x00000001;
@@ -30,6 +31,7 @@ public sealed class WaveOutPlayer : IDisposable
     private long _baseFrames;
     private double _volume = 0.8;
     private bool _muted;
+    private float _appliedGain;
     private bool _disposed;
 
     public event Action? Ended;
@@ -112,6 +114,7 @@ public sealed class WaveOutPlayer : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_thread is not null) return;
 
+        _appliedGain = TargetGain;
         _thread = new Thread(Pump)
         {
             IsBackground = true,
@@ -226,20 +229,39 @@ public sealed class WaveOutPlayer : IDisposable
         return read;
     }
 
+    private float TargetGain => _muted || !double.IsFinite(_volume) ? 0f : (float)_volume * PeakHeadroom;
+
     private void ApplyVolume(byte[] data, int length)
     {
-        var gain = _muted ? 0f : (float)Math.Clamp(_volume, 0, 1);
-        if (gain >= 0.999f) return;
+        var samples = MemoryMarshal.Cast<byte, short>(data.AsSpan(0, length));
+        _appliedGain = ScaleSamples(samples, _info.Channels, _appliedGain, TargetGain,
+            Math.Max(1, _info.SampleRate / 100));
+    }
 
-        for (var i = 0; i + 1 < length; i += 2)
+    internal static float ScaleSamples(Span<short> samples, int channels, float gain, float target, int rampFrames)
+    {
+        if (gain != target)
         {
-            var sample = (short)(data[i] | (data[i + 1] << 8));
-            var scaled = (int)(sample * gain);
-            if (scaled > short.MaxValue) scaled = short.MaxValue;
-            else if (scaled < short.MinValue) scaled = short.MinValue;
-            data[i] = (byte)scaled;
-            data[i + 1] = (byte)(scaled >> 8);
+            var frames = Math.Min(rampFrames, samples.Length / channels);
+            var step = (target - gain) / rampFrames;
+            for (var frame = 0; frame < frames; frame++)
+            {
+                var frameGain = gain + step * (frame + 1);
+                for (var channel = 0; channel < channels; channel++)
+                {
+                    var index = frame * channels + channel;
+                    samples[index] = (short)MathF.Round(samples[index] * frameGain);
+                }
+            }
+            gain = frames == rampFrames ? target : gain + step * frames;
+            samples = samples[(frames * channels)..];
         }
+
+        if (gain == 0f) samples.Clear();
+        else
+            for (var i = 0; i < samples.Length; i++)
+                samples[i] = (short)MathF.Round(samples[i] * gain);
+        return gain;
     }
 
     private void Unprepare(Slot slot)
@@ -271,7 +293,7 @@ public sealed class WaveOutPlayer : IDisposable
 
     private void AllocateSlots()
     {
-        var size = Math.Max(4096, _info.ByteRate * BufferMilliseconds / 1000);
+        var size = (int)Math.Max(4096, (long)_info.ByteRate * BufferMilliseconds / 1000);
         size -= size % Math.Max(1, _info.BlockAlign);
 
         for (var i = 0; i < BufferCount; i++)

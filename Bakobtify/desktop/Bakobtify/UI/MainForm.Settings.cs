@@ -6,14 +6,17 @@ internal sealed partial class MainForm
     private const string DiscordPresenceSetting = "discord_presence";
     private const string LocalAccelerationSetting = "desktop_local_acceleration";
     private const string InterfaceModeSetting = "desktop_interface_mode";
+    private const string SearchAudiusSetting = "desktop_search_audius";
+    private bool _searchAudius;
     private bool _presenceEnabled;
     private bool _normalInterface;
     private float _interfaceMultiplier = 1f;
     private float _interfacePillPosition;
-    private readonly System.Windows.Forms.Timer _interfaceAnimation = new() { Interval = 16 };
+    private readonly System.Windows.Forms.Timer _interfaceAnimation = new() { Interval = 25 };
     private SoftButton? _interfacePill;
     private long _interfaceAnimationStart;
     private float _interfaceAnimationFrom;
+    private float _interfaceScaleFrom;
 
     private void LoadInterfaceMode()
     {
@@ -22,17 +25,25 @@ internal sealed partial class MainForm
         _interfacePillPosition = _normalInterface ? 1f : 0f;
         _interfaceAnimation.Tick += (_, _) =>
         {
-            var progress = Math.Clamp((Environment.TickCount64 - _interfaceAnimationStart) / 180f, 0f, 1f);
+            var progress = Math.Clamp((Environment.TickCount64 - _interfaceAnimationStart) / 220f, 0f, 1f);
             var eased = progress * progress * (3f - 2f * progress);
             var destination = _normalInterface ? 1f : 0f;
             _interfacePillPosition = _interfaceAnimationFrom + (destination - _interfaceAnimationFrom) * eased;
+            var scale = _normalInterface ? 1.15f : 1f;
+            _interfaceMultiplier = _interfaceScaleFrom + (scale - _interfaceScaleFrom) * eased;
+            if (progress == 1f) _interfaceAnimation.Stop();
+            Arrange(resizeQueue: progress == 1f);
             if (_interfacePill is { IsDisposed: false }) _interfacePill.Invalidate();
-            if (progress < 1f) return;
-
-            _interfaceAnimation.Stop();
-            _interfaceMultiplier = _normalInterface ? 1.15f : 1f;
-            Arrange();
         };
+    }
+
+    private void FinishInterfaceResize()
+    {
+        if (!_interfaceAnimation.Enabled) return;
+        _interfaceAnimation.Stop();
+        _interfacePillPosition = _normalInterface ? 1f : 0f;
+        _interfaceMultiplier = _normalInterface ? 1.15f : 1f;
+        Arrange();
     }
 
     private void LoadPresenceSettings()
@@ -52,7 +63,7 @@ internal sealed partial class MainForm
 
         void PositionColumns()
         {
-            const int top = 65, gap = 24, sideWidth = 350, sideHeight = 298;
+            const int top = 65, gap = 24, sideWidth = 350, sideHeight = 338;
             var width = Units(page.Width);
             var wide = width >= 900;
             var mainWidth = wide ? Math.Min(760, width - gap - sideWidth) : Math.Min(760, width);
@@ -69,7 +80,7 @@ internal sealed partial class MainForm
 
     private int BuildSettingsSections(Surface page)
     {
-        var playback = AddSettingsCard(page, "Reprodução", 0, 196, 5);
+        var playback = AddSettingsCard(page, "Reprodução", 0, 232, 6);
         AddSettingToggle(playback, "Modo aleatório", 8, () => _shuffle, () => { _shuffle = !_shuffle; UpdatePlayer(); });
         AddSettingToggle(playback, "Silenciar", 44, () => _audio.Muted, ToggleMute);
         AddSettingToggle(playback, "Usar player web quando necessário", 80, () => _allowEmbeddedPlayer,
@@ -83,8 +94,10 @@ internal sealed partial class MainForm
             _audio.LocalAcceleration = enabled;
             UpdatePlayer();
         });
+        AddSettingToggle(playback, "Fechar WebView após 30 s em pausa", 188, () => _closeIdleEmbeddedPlayer,
+            ToggleEmbeddedIdleClose).Enabled = EmbeddedSoundCloud.Available;
 
-        var discord = AddSettingsCard(page, "Discord", 252, 84);
+        var discord = AddSettingsCard(page, "Discord", 288, 84);
         AddSettingToggle(discord, "Compartilhar o que estou ouvindo", 8, () => _presenceEnabled, () =>
         {
             var enabled = !_presenceEnabled;
@@ -96,15 +109,21 @@ internal sealed partial class MainForm
         discordHint.BackColor = Theme.Surface;
         Span(discord, discordHint, 16, 43, 30, 16);
 
-        var network = AddSettingsCard(page, "Conexão", 392, 66);
+        var network = AddSettingsCard(page, "Conexão", 428, 108);
         var connection = ButtonAt(network, "Consultar conexão", "link", () => _ = CheckConnectionAsync());
         StyleSettingsButton(connection);
         Place(connection, 16, 14, 187, 38);
         var diagnostics = ButtonAt(network, "Diagnóstico", "settings", () => Navigate(new(Page.Diagnostics)));
         StyleSettingsButton(diagnostics);
         Place(diagnostics, 214, 14, 151, 38);
+        AddSettingToggle(network, "Buscar no Audius", 61, () => _searchAudius, () =>
+        {
+            var enabled = !_searchAudius;
+            _db.SetMeta(SearchAudiusSetting, enabled ? "on" : "off", double.MaxValue);
+            _searchAudius = enabled;
+        });
 
-        const int shortcutsTop = 514;
+        const int shortcutsTop = 592;
         var shortcutsHeight = ShortcutLabels.Length * 36 + 16;
         var shortcuts = AddSettingsCard(page, "Atalhos de reprodução", shortcutsTop,
             shortcutsHeight, ShortcutLabels.Length);
@@ -136,13 +155,14 @@ internal sealed partial class MainForm
 
     private void BuildAppearanceSettings(Surface page)
     {
-        var appearance = AddSettingsCard(page, "Aparência", 0, 94);
+        var appearance = AddSettingsCard(page, "Aparência", 0, 134);
         var pill = ButtonAt(appearance, "", "", () =>
         {
             var normal = !_normalInterface;
             _db.SetMeta(InterfaceModeSetting, normal ? "normal" : "smaller", double.MaxValue);
             _normalInterface = normal;
             _interfaceAnimationFrom = _interfacePillPosition;
+            _interfaceScaleFrom = _interfaceMultiplier;
             _interfaceAnimationStart = Environment.TickCount64;
             _interfaceAnimation.Start();
         }, "Alternar tamanho da interface");
@@ -166,8 +186,15 @@ internal sealed partial class MainForm
         var hint = Theme.Label("Normal aumenta a interface em 15%.", 13, Theme.Muted);
         hint.BackColor = Theme.Surface;
         Span(appearance, hint, 16, 53, 28, 16);
+        AddSettingToggle(appearance, "Barra de rolagem", 88, () => _showScrollbar, () =>
+        {
+            var enabled = !_showScrollbar;
+            _db.SetMeta(ScrollbarSetting, enabled ? "on" : "off", double.MaxValue);
+            _showScrollbar = enabled;
+            ResizeContent();
+        });
 
-        var shortcuts = AddSettingsCard(page, "Navegação rápida", 150, 110);
+        var shortcuts = AddSettingsCard(page, "Navegação rápida", 190, 110);
         AddHint("Ctrl + K   Buscar músicas e artistas", 10);
         AddHint("Alt + ←   Voltar à tela anterior", 40);
         AddHint("Alt + →   Avançar para a próxima tela", 70);

@@ -1,13 +1,19 @@
 # Bakobtify
 
-Player de música do SoundCloud para Windows. O aplicativo desktop usa C# e
+Player de música para Windows com SoundCloud e Audius. O aplicativo desktop usa C# e
 WinForms com o .NET 10 Desktop x64. O áudio é decodificado pelo Media Foundation
 e enviado ao dispositivo padrão do Windows.
 
 ## Em breve
 
-O Bakobtify vai ganhar suporte a mais provedores de música, incluindo Spotify
-e YouTube. Uma versão que funciona sem WebView também está em desenvolvimento (O desenvolvimento dessa versão é lento por causa do processo necessario, o webview cobre esse processo mas sem ele vai desacelerar bastante o desenvolvimento até estar pronto).
+O desenvolvimento da versão sem WebView e a integração com mais provedores de
+música, incluindo Spotify e YouTube, estão pausados pelos seguintes motivos.
+
+- Muito complicado
+- Preguiça
+
+O Bakobtify continuará recebendo melhorias de qualidade de vida, correções de
+bugs e novas funcionalidades.
 
 ## Usar a versão empacotada
 
@@ -34,12 +40,23 @@ desabilitadas. O projeto usa o SDK e o runtime Desktop já instalados.
 
 - **Início** mostra atalhos da biblioteca, faixas ouvidas e sugestões do catálogo.
 - **Explorar** reúne filtros, gêneros e uma faixa em destaque.
-- A busca aceita nomes de faixas e artistas e links públicos de faixas do SoundCloud.
+- A busca combina os catálogos disponíveis, dá prioridade a correspondências por
+  título e artista e aceita links públicos de faixas do SoundCloud.
 - O menu de cada faixa permite curtir, adicionar a uma playlist ou fila e copiar
   seu link. As playlists e o histórico têm ações próprias na tela da coleção.
 - Use os controles do player para voltar, avançar, arrastar a posição, alternar
   repetição, abrir a fila e controlar o volume. O modo aleatório fica no menu de
   configurações e na tela da coleção.
+
+## Catálogos e privacidade
+
+O Audius usa a API pública. A busca nele vem desligada por padrão e pode ser
+ativada em **Configurações → Conexão → Buscar no Audius**. O menu da faixa abre
+sua página no Audius.
+
+A busca envia o texto digitado aos catálogos habilitados. A reprodução consulta
+o provedor da faixa. Favoritos, playlists e histórico ficam no banco local, e
+o áudio do Audius usa arquivos temporários durante a reprodução.
 
 | Atalho | Ação |
 | --- | --- |
@@ -65,9 +82,10 @@ componentes WebView2 já presentes no Power Query desta máquina. Em outra
 instalação, `BakobtifyWebView2Dir` pode apontar para uma pasta x64 que já
 contenha as duas DLLs gerenciadas e o `WebView2Loader.dll`.
 
-Após 30 segundos em pausa, o Bakobtify fecha o WebView2 e guarda a posição
-para retomar. Para usar somente o motor nativo, desmarque **Usar player web
-quando necessário** nas configurações.
+Por padrão, após 30 segundos em pausa, o Bakobtify fecha o WebView2 e guarda a posição
+para retomar. Desative **Fechar WebView após 30 s em pausa** em
+**Configurações → Reprodução** para manter o player aberto. Para usar somente
+o motor nativo, desative **Usar player web quando necessário**.
 
 Com o Discord desktop aberto, vá à seção **Discord** em **Configurações** e ative **Compartilhar o que estou ouvindo** para exibir faixa, artista e capa.
 A atividade é removida ao pausar ou desligar a integração.

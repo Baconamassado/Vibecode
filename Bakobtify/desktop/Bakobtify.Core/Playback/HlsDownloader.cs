@@ -123,6 +123,8 @@ public sealed class HlsDownloader
 
     private async Task<HlsManifest> GetManifestAsync(Uri url, CancellationToken ct)
     {
+        if (!SoundCloudTransport.IsTrustedUri(url))
+            throw new InvalidDataException("Destino HLS fora dos domínios do SoundCloud.");
         using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)
             .ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
@@ -155,6 +157,8 @@ public sealed class HlsDownloader
         int maxBytes = MaxSegmentBytes)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        if (request.RequestUri is not { } uri || !SoundCloudTransport.IsTrustedUri(uri))
+            throw new InvalidDataException("Destino HLS fora dos domínios do SoundCloud.");
         if (rangeOffset is { } offset && rangeLength is { } length)
         {
             if (offset < 0 || length <= 0 || length > maxBytes || offset > long.MaxValue - (length - 1))

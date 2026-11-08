@@ -31,6 +31,10 @@ public sealed class Track
 
     public string ArtistOrUnknown => string.IsNullOrWhiteSpace(Artist) ? "Desconhecido" : Artist;
 
+    [JsonIgnore]
+    public string Provider => Id.StartsWith("audius:", StringComparison.Ordinal) ? "Audius" :
+        Id.StartsWith("jamendo:", StringComparison.Ordinal) ? "Jamendo" : "SoundCloud";
+
     public string DurationText
     {
         get

@@ -11,9 +11,11 @@ internal sealed partial class MainForm
     private bool _embeddedLogged;
     private const string EmbeddedPlayerSetting = "desktop_embedded_player";
     private const string EmbeddedGpuSetting = "desktop_embedded_gpu";
+    private const string EmbeddedIdleCloseSetting = "desktop_embedded_idle_close";
     private const string VolumeSetting = "desktop_volume";
     private bool _disableEmbeddedGpu;
     private bool _allowEmbeddedPlayer;
+    private bool _closeIdleEmbeddedPlayer;
     private long? _embeddedPausedAt;
     private (TimeSpan Position, TimeSpan Duration)? _parkedEmbedded;
     private bool _playingLocal;
@@ -343,11 +345,20 @@ internal sealed partial class MainForm
 
     private void ReleasePausedEmbeddedPlayer()
     {
-        if (_embeddedPlayer is not { Playing: false } widget || _embeddedPausedAt is not { } pausedAt ||
+        if (!_closeIdleEmbeddedPlayer || _embeddedPlayer is not { Playing: false } widget ||
+            _embeddedPausedAt is not { } pausedAt ||
             Environment.TickCount64 - pausedAt < 30_000) return;
         _parkedEmbedded = (widget.Position, widget.Duration);
         CloseEmbeddedPlayer();
         UpdatePlayer();
+    }
+
+    private void ToggleEmbeddedIdleClose()
+    {
+        var enabled = !_closeIdleEmbeddedPlayer;
+        _db.SetMeta(EmbeddedIdleCloseSetting, enabled ? "on" : "off", double.MaxValue);
+        _closeIdleEmbeddedPlayer = enabled;
+        if (enabled && _embeddedPausedAt.HasValue) _embeddedPausedAt = Environment.TickCount64;
     }
 
     private void ToggleEmbeddedPlayerSetting()
@@ -535,7 +546,7 @@ internal sealed partial class MainForm
             item.FillColor = index == _index ? Theme.Surface : Color.Transparent;
             item.DrawContent = (g, r) =>
             {
-                _artwork.Draw(g, new Rectangle(5, 5, 36, 36), track.Artwork, Palette(index), 5);
+                _artwork.Draw(item, g, new Rectangle(5, 5, 36, 36), track.Artwork, Palette(index), 5);
                 Theme.Write(g, track.Title, new Rectangle(49, 5, r.Width - 54, 19),
                     Theme.Medium(14), index == _index ? Theme.Accent : Theme.Text);
                 Theme.Write(g, track.ArtistOrUnknown, new Rectangle(49, 23, r.Width - 54, 17), Theme.Font(12), Theme.Muted);

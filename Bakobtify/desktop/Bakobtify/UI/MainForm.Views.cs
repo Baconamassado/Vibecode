@@ -45,10 +45,12 @@ internal sealed partial class MainForm
 
     private void OpenRoute(Route route)
     {
+        FinishInterfaceResize();
         _request?.Cancel();
         _request = null;
         _results = [];
         _loadError = null;
+        _catalogNotice = null;
         _artistProfile = null;
         _artistTracks.Clear();
         _artistReleases = null;
@@ -59,6 +61,7 @@ internal sealed partial class MainForm
         _search.Text = route.Page == Page.Search ? route.Value : "";
         if (_search.Focused) ActiveControl = null;
         Render(false);
+        AnimatePage();
         if (route.ArtistTrack is not null) _ = LoadArtistAsync(route);
         else if (_busy) _ = LoadResultsAsync(route);
         else if (route.Page is Page.Home or Page.Explore && _discovery.Count == 0) _ = LoadDiscoveryAsync();
@@ -73,22 +76,32 @@ internal sealed partial class MainForm
         else Navigate(route);
     }
 
+    private string? _catalogNotice;
+
     private async Task LoadResultsAsync(Route route)
     {
         var started = Environment.TickCount64;
         using var request = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         _request = request;
+        var includeAudius = _searchAudius;
         try
         {
             List<Track> tracks;
+            string[] unavailable = [];
             if (route.Page == Page.Search && Uri.TryCreate(route.Value, UriKind.Absolute, out var url) &&
                 url.Scheme == Uri.UriSchemeHttps && url.Host is "soundcloud.com" or "www.soundcloud.com" or "on.soundcloud.com")
                 tracks = [await _client.ResolvePermalinkAsync(url.GetLeftPart(UriPartial.Path), request.Token)];
+            else if (route.Page == Page.Search)
+                (tracks, unavailable) = await _client.SearchCatalogAsync(route.Value, 40, request.Token, includeAudius);
             else
                 tracks = await _client.SearchAsync(route.Value, 40, request.Token);
             if (!request.IsCancellationRequested)
             {
                 _results = tracks;
+                _catalogNotice = unavailable.Length > 0 ? "Indisponível agora · " + string.Join(", ", unavailable) : null;
+                if (unavailable.Length == (includeAudius ? 2 : 1))
+                    _loadError = includeAudius ? "Não foi possível consultar os catálogos. Tente novamente."
+                        : "Não foi possível consultar o SoundCloud. Tente novamente.";
                 RememberRecommendationCandidates(tracks);
                 LogDiagnostic("Aplicativo", $"Consulta ao catálogo retornou {tracks.Count} faixas.", started);
             }
@@ -163,14 +176,27 @@ internal sealed partial class MainForm
 
     private void Render(bool preserveScroll = true)
     {
-        var oldScroll = preserveScroll ? -_viewport.AutoScrollPosition.Y : 0;
+        if (preserveScroll && _route.Page == Page.Home && (_scroll != _scrollTarget || _dragAnchor.HasValue))
+        {
+            _homeRenderPending = true;
+            _motion.Start();
+            return;
+        }
+        _homeRenderPending = false;
+        var oldScroll = preserveScroll ? _scroll : 0;
+        _pageOffset = 0;
+        if (!preserveScroll)
+        {
+            _recentShelfKey = null;
+            _discoverShelfKey = null;
+        }
         _viewport.SuspendLayout();
         try
         {
-            _viewport.AutoScrollPosition = Point.Empty;
-            ClearControls(_viewport);
+            _content?.Dispose();
             _content = new Surface(Theme.Background);
             _viewport.Controls.Add(_content);
+            _scrollbar.BringToFront();
             ResizeContent();
             switch (_route.Page)
             {
@@ -191,9 +217,10 @@ internal sealed partial class MainForm
                 case Page.Artist: BuildArtist(_content); break;
             }
             ResizeContent();
+            TrackPageFocus(_content);
         }
         finally { _viewport.ResumeLayout(true); }
-        _viewport.AutoScrollPosition = new Point(0, oldScroll);
+        SetScroll(oldScroll);
         UpdateNavigation();
     }
 
@@ -201,10 +228,13 @@ internal sealed partial class MainForm
     {
         if (_content is null || _content.IsDisposed) return;
         var padding = Pixels(Math.Clamp(36 + (Units(ClientSize.Width) - 1280) / 30, 30, 49));
-        var scroll = _viewport.AutoScrollPosition;
-        var usable = _viewport.Width - SystemInformation.VerticalScrollBarWidth - 2 * padding;
-        _content.SetBounds(padding + scroll.X, Pixels(31) + scroll.Y, Math.Max(Pixels(100), usable), _content.Height);
-        _viewport.AutoScrollMinSize = new Size(0, _content.Height + Pixels(51));
+        var usable = _viewport.ClientSize.Width - 2 * padding;
+        _content.SetBounds(padding, Pixels(31) - _scroll + _pageOffset, Math.Max(Pixels(100), usable), _content.Height);
+        var width = Pixels(16);
+        _scrollbar.SetBounds(_viewport.ClientSize.Width - width - Pixels(5), Pixels(8),
+            width, Math.Max(0, _viewport.ClientSize.Height - Pixels(16)));
+        _scrollbar.Visible = _showScrollbar && MaxScroll > 0;
+        if (_scroll > MaxScroll || _scrollTarget > MaxScroll) SetScroll(Math.Min(_scroll, MaxScroll));
     }
 
     private void UpdateNavigation()
@@ -250,9 +280,8 @@ internal sealed partial class MainForm
 
     private void BuildHome(Surface page)
     {
-        var hour = DateTime.Now.Hour;
-        var greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
-        Span(page, Theme.Label(greeting, 36, bold: true), 0, 0, 53);
+        _greeting = Theme.Label(GreetingAt(DateTime.Now.Hour), 36, bold: true);
+        Span(page, _greeting, 0, 0, 53);
         var recent = _history.DistinctBy(t => t.Id).ToList();
         var shortcuts = new List<(string Name, string? Art, Color Color, Action Click, bool Heart)>
         {
@@ -272,18 +301,19 @@ internal sealed partial class MainForm
             button.FillColor = Theme.Surface;
             button.DrawContent = (g, r) =>
             {
-                _artwork.Draw(g, new Rectangle(0, 0, r.Height - 1, r.Height - 1), cover, color, 10, heart);
+                _artwork.Draw(button, g, new Rectangle(0, 0, r.Height - 1, r.Height - 1), cover, color, 10, heart);
                 Theme.Write(g, name, new Rectangle(r.Height + 13, 0, r.Width - r.Height - 21, r.Height),
                     Theme.Medium(14), Theme.Text);
             };
             Grid(page, button, i, 3, 66, 56, 12, 11);
         }
-        var recentShelf = BuildTrackShelf("Continue ouvindo", recent, "As faixas que você ouvir aparecem aqui.");
+        var recentShelf = BuildTrackShelf("Continue ouvindo", recent, "As faixas que você ouvir aparecem aqui.",
+            ref _recentShelfKey);
         var discoverShelf = BuildTrackShelf(HasRecommendationProfile ? "Para você" : "Descubra no SoundCloud",
             RecommendTracks(),
             _discovering || _loadingRecommendationCatalog || _relatedRequest is not null ? "Buscando faixas…" :
             HasRecommendationProfile ? "Ainda não há sugestões com afinidade suficiente." :
-            "Explore o catálogo para encontrar novas faixas.");
+            "Explore o catálogo para encontrar novas faixas.", ref _discoverShelfKey);
         page.Controls.AddRange([recentShelf, discoverShelf]);
         var shelfTop = 66 + (shortcuts.Count + 2) / 3 * 67 + 24;
         var laidOutWidth = -1;
@@ -300,16 +330,25 @@ internal sealed partial class MainForm
         PositionShelves();
     }
 
-    private Surface BuildTrackShelf(string title, IReadOnlyList<Track> tracks, string empty)
+    private Surface BuildTrackShelf(string title, IReadOnlyList<Track> tracks, string empty, ref string? previousKey)
     {
+        var shelf = tracks.Take(5).ToArray();
+        var key = title + "\n" + (shelf.Length == 0 ? empty : string.Join("\n", shelf.Select(track => track.Id)));
+        var changed = key != previousKey;
+        previousKey = key;
         var section = new Surface(Theme.Background) { Height = Pixels(80), AccessibleName = title };
-        Span(section, Theme.Label(title, 23, bold: true), 0, 0, 39);
-        if (tracks.Count == 0)
+        var heading = (ThemeLabel)Theme.Label(title, 23, bold: true);
+        Span(section, heading, 0, 0, 39);
+        if (changed) Animate(heading, 220, progress =>
+        {
+            heading.TextOpacity = .45f + .55f * EaseOut(progress);
+            heading.Invalidate();
+        });
+        if (shelf.Length == 0)
         {
             Span(section, Theme.Label(empty, 14, Theme.Muted), 0, 42, 36);
             return section;
         }
-        var shelf = tracks.Take(5).ToArray();
         var cards = new List<SoftButton>();
         for (var i = 0; i < shelf.Length; i++)
         {
@@ -320,11 +359,16 @@ internal sealed partial class MainForm
             card.DrawContent = (g, r) =>
             {
                 var side = r.Width - 2;
-                _artwork.Draw(g, new Rectangle(1, 1, side, side), track.Artwork, Palette(index), 11);
+                _artwork.Draw(card, g, new Rectangle(1, 1, side, side), track.Artwork, Palette(index), 11);
                 Theme.Write(g, track.Title, new Rectangle(1, side + 9, side, 18), Theme.Medium(14), Theme.Text);
                 Theme.Write(g, track.ArtistOrUnknown, new Rectangle(1, side + 28, side, 17), Theme.Font(13), Theme.Muted);
             };
             card.MouseUp += (_, e) => { if (e.Button == MouseButtons.Right) ShowTrackMenu(card, e.Location, track); };
+            if (changed) Animate(card, 235, progress =>
+            {
+                card.Reveal = .45f + .55f * EaseOut(progress);
+                card.Invalidate();
+            }, index * 22);
         }
         var lastWidth = -1;
         void PositionCards()
@@ -381,7 +425,7 @@ internal sealed partial class MainForm
             using var ring = new Pen(Color.FromArgb(55, 55, 61), 1.5f);
             for (var radius = side / 2 + 6; radius <= side / 2 + 70; radius += 32)
                 g.DrawEllipse(ring, centerX - radius, centerY - radius, radius * 2, radius * 2);
-            _artwork.Draw(g, new Rectangle(artworkX, centerY - side / 2, side, side), featured?.Artwork, Theme.Accent, 12);
+            _artwork.Draw(hero, g, new Rectangle(artworkX, centerY - side / 2, side, side), featured?.Artwork, Theme.Accent, 12);
             g.Restore(saved);
             var width = Math.Max(20, artworkX - 60);
             var textY = (area.Height - 216) / 2;
@@ -473,14 +517,17 @@ internal sealed partial class MainForm
     {
         Span(page, Theme.Label("Busca", 36, bold: true), 0, 0, 53);
         Span(page, Theme.Label($"Resultados para “{_route.Value}”", 16, Theme.Muted), 1, 55, 33);
-        page.Height = Pixels(BuildResults(page, 102, _results));
+        var catalogs = _searchAudius ? "SoundCloud · Audius" : "SoundCloud";
+        Span(page, Theme.Label((_busy ? null : _catalogNotice) ?? catalogs, 13, Theme.Muted), 1, 87, 25);
+        page.Height = Pixels(BuildResults(page, 121, _results));
     }
 
     private int BuildResults(Surface page, int y, IReadOnlyList<Track> tracks)
     {
         if (_busy || _loadError is not null || tracks.Count == 0)
         {
-            var text = _busy ? "Buscando no SoundCloud…" : _loadError ?? "Nenhuma faixa encontrada.";
+            var text = _busy ? (_route.Page == Page.Search && _searchAudius ? "Buscando nos catálogos…" : "Buscando no SoundCloud…")
+                : _loadError ?? "Nenhuma faixa encontrada.";
             Span(page, Theme.Label(text, 15, Theme.Muted), 0, y, 40);
             if (_loadError is not null)
             {
@@ -498,7 +545,7 @@ internal sealed partial class MainForm
         var art = new Surface(Theme.Background);
         page.Controls.Add(art);
         Place(art, 0, 0, 188, 188);
-        PaintDesign(art, (g, area) => _artwork.Draw(g, area, tracks.FirstOrDefault()?.Artwork,
+        PaintDesign(art, (g, area) => _artwork.Draw(art, g, area, tracks.FirstOrDefault()?.Artwork,
             _route.Page == Page.Favorites ? Theme.Pink : Theme.Accent, 15, _route.Page == Page.Favorites));
         Span(page, Theme.Label(kind, 13, Theme.Muted), 215, 9, 24);
         Span(page, Theme.Label(title, 49, bold: true), 213, 34, 63);
@@ -616,12 +663,13 @@ internal sealed partial class MainForm
                 else
                     Theme.Write(g, (index + 1).ToString(), new Rectangle(13, 0, 25, 51), Theme.Font(14), Theme.Muted);
                 if (_route.Page == Page.Search)
-                    _artwork.Draw(g, new Rectangle(32, 12, 25, 25), track.Artwork, Palette(index), 4);
+                    _artwork.Draw(button, g, new Rectangle(32, 12, 25, 25), track.Artwork, Palette(index), 4);
                 var genreX = r.Width * 54 / 100;
                 Theme.Write(g, track.Title, new Rectangle(62, 6, genreX - 72, 21),
                     Theme.Medium(14), playing ? Theme.Accent : Theme.Text);
                 if (!linkArtist)
-                    Theme.Write(g, track.ArtistOrUnknown, new Rectangle(62, 27, genreX - 72, 17), Theme.Font(13), Theme.Muted);
+                    Theme.Write(g, track.Provider == "SoundCloud" ? track.ArtistOrUnknown : $"{track.ArtistOrUnknown} · {track.Provider}",
+                        new Rectangle(62, 27, genreX - 72, 17), Theme.Font(13), Theme.Muted);
                 var detail = _route.Page switch
                 {
                     Page.Search => track.Genre,

@@ -135,6 +135,25 @@ internal sealed partial class MainForm
                 Notify("Link copiado.");
             }, "link");
         }
+        else if (Uri.TryCreate(track.PermalinkUrl, UriKind.Absolute, out var catalogUri) &&
+            catalogUri.Scheme == Uri.UriSchemeHttps && catalogUri.IsDefaultPort && catalogUri.UserInfo.Length == 0 &&
+            track.Provider == "Audius" && catalogUri.IdnHost == "audius.co")
+        {
+            MenuItem(menu.Items, $"Abrir faixa no {track.Provider}", () =>
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(catalogUri.AbsoluteUri)
+                    {
+                        UseShellExecute = true
+                    });
+                }
+                catch (System.ComponentModel.Win32Exception)
+                {
+                    Notify("Não foi possível abrir o navegador.");
+                }
+            }, "link");
+        }
         return menu;
     }
 

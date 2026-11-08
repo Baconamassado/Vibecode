@@ -21,7 +21,7 @@ internal sealed partial class MainForm : Form
     private readonly Bitmap? _appMark;
     private readonly Surface _header = new(Theme.Background);
     private readonly Surface _sidebar = new(Theme.Sidebar);
-    private readonly Surface _viewport = new(Theme.Background) { AutoScroll = true, TabStop = false };
+    private readonly Surface _viewport = new(Theme.Background) { TabStop = false };
     private readonly Surface _player = new(Theme.Sidebar);
     private readonly Surface _queuePane = new(Theme.Sidebar) { Visible = false };
     private readonly FlowLayoutPanel _playlistNav = new()
@@ -94,20 +94,18 @@ internal sealed partial class MainForm : Form
         _db = db;
         LoadInterfaceMode();
         _client = client;
+        InitializeMotion();
+        _searchAudius = _db.GetMeta(SearchAudiusSetting)?.Value == "on";
         _audio = audio;
         LoadVolumeSettings();
         _allowEmbeddedPlayer = _db.GetMeta(EmbeddedPlayerSetting)?.Value != "off";
         _disableEmbeddedGpu = _db.GetMeta(EmbeddedGpuSetting)?.Value == "off";
+        _closeIdleEmbeddedPlayer = _db.GetMeta(EmbeddedIdleCloseSetting)?.Value != "off";
         LoadPresenceSettings();
         LoadShortcuts();
         LoadRecommendationCandidates();
         _tips = new HoverTips(this, Pixels);
-        _artwork = new ArtworkCache(client.Http, _lifetime.Token, () =>
-        {
-            _content?.Invalidate(true);
-            _cover?.Invalidate();
-            if (_queuePane.Visible) _queuePane.Invalidate(true);
-        });
+        _artwork = new ArtworkCache(client.Http, _lifetime.Token);
         Text = "Bakobtify";
         if (Icon.ExtractAssociatedIcon(Application.ExecutablePath) is { } appIcon)
         {
@@ -143,7 +141,7 @@ internal sealed partial class MainForm : Form
             _timer.Start();
             _ = LoadDiscoveryAsync();
         };
-        _timer.Tick += (_, _) => UpdateClock();
+        _timer.Tick += (_, _) => { UpdateClock(); UpdateGreeting(); };
         _audio.Error += AudioError;
         _audio.ProgressChanged += AudioProgress;
         _audio.Ended += AudioEnded;
@@ -286,7 +284,7 @@ internal sealed partial class MainForm : Form
         _localAudio.ForeColor = Theme.Accent;
         _localAudio.AlignLeft = true;
         _localAudio.Font = Theme.Medium(13);
-        _cover.DrawContent = (g, r) => _artwork.Draw(g, r, _current?.Artwork, Theme.Accent, 8);
+        _cover.DrawContent = (g, r) => _artwork.Draw(_cover, g, r, _current?.Artwork, Theme.Accent, 8);
         _like = ButtonAt(_player, "", "heart", () => { if (_current is { } t) ToggleFavorite(t); }, "Curtir faixa");
         _prev = ButtonAt(_player, "", "prev", Previous, "Faixa anterior");
         _next = ButtonAt(_player, "", "next", () => Advance(false), "Próxima faixa");
@@ -356,7 +354,7 @@ internal sealed partial class MainForm : Form
         };
     }
 
-    private void Arrange()
+    private void Arrange(bool resizeQueue = true)
     {
         if (ClientSize.Width < 400 || ClientSize.Height < 180) return;
         // Referência de 1280 x 800. A altura determina a escala dos elementos
@@ -364,8 +362,8 @@ internal sealed partial class MainForm : Form
         var baseScale = Math.Clamp(Math.Min(ClientSize.Height / 800f, ClientSize.Width / 850f), .85f, 2.5f)
             * _interfaceMultiplier;
         var scale = WindowState == FormWindowState.Maximized ? baseScale * .75f : baseScale;
-        var scaleChanged = Math.Abs(scale - _scale) > .001f;
-        var oldScroll = scaleChanged ? Units(-_viewport.AutoScrollPosition.Y) : 0;
+        var scaleChanged = scale != _scale;
+        var oldScroll = scaleChanged ? Units(_scroll) : 0;
         _scale = scale;
         const int top = 50, bottom = 84;
         var w = Units(ClientSize.Width);
@@ -444,8 +442,8 @@ internal sealed partial class MainForm : Form
         if (scaleChanged && _content is not null)
         {
             Render(false);
-            _viewport.AutoScrollPosition = new Point(0, Pixels(oldScroll));
-            RenderQueue();
+            SetScroll(Pixels(oldScroll));
+            if (resizeQueue) RenderQueue();
         }
         else ResizeContent();
     }
@@ -538,6 +536,16 @@ internal sealed partial class MainForm : Form
         }
         if (keyData == (Keys.Alt | Keys.Left)) { StepRoute(_back, _forward); return true; }
         if (keyData == (Keys.Alt | Keys.Right)) { StepRoute(_forward, _back); return true; }
+        if (_viewport.ContainsFocus && _diagnosticView?.Focused != true && MaxScroll > 0)
+        {
+            switch (keyData)
+            {
+                case Keys.PageUp: ScrollTowards(_scrollTarget - _viewport.Height); return true;
+                case Keys.PageDown: ScrollTowards(_scrollTarget + _viewport.Height); return true;
+                case Keys.Control | Keys.Home: ScrollTowards(0); return true;
+                case Keys.Control | Keys.End: ScrollTowards(MaxScroll); return true;
+            }
+        }
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
@@ -599,6 +607,7 @@ internal sealed partial class MainForm : Form
         _request?.Cancel();
         _timer.Dispose();
         _interfaceAnimation.Dispose();
+        _motion.Dispose();
         _tips.Dispose();
         _artwork.Dispose();
         _audio.Error -= AudioError;
