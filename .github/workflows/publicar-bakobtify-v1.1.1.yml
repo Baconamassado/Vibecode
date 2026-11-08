@@ -1,0 +1,26 @@
+name: Publicar Bakobtify v1.1.1
+on:
+  push:
+    branches:
+      - publish/bakobtify-v1.1.1
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Verificar o pacote e publicar a release
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive=Bakobtify-v1.1.1-win-x64.zip
+          gh api --method GET "repos/$GH_REPO/contents/Bakobtify/.release/$archive" \
+            -H 'Accept: application/vnd.github.raw+json' -f "ref=$GITHUB_SHA" > "$archive"
+          echo '61902d4bd2cc520f49bd9ce54e8a7e66003ccf953b822a080d78a66b7fa01588  Bakobtify-v1.1.1-win-x64.zip' | sha256sum --check --strict
+          gh release create bakobtify-v1.1.1 "$archive" \
+            --target b98df8386d924a61ea6ec2a15996077175baf35f \
+            --title 'Bakobtify v1.1.1' \
+            --notes 'Animações de navegação e redimensionamento, rolagem mais suave e barra de rolagem opcional. Inclui ajustes de áudio e catálogo. Extraia o ZIP inteiro e abra Bakobtify.exe. Requer Windows x64 e .NET Desktop Runtime 10 x64.'
