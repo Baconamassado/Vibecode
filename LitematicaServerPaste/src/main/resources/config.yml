@@ -1,0 +1,18 @@
+# Limites globais; nenhuma ferramenta ou dependencia e baixada pelo plugin.
+max-compressed-bytes: 16777216
+max-decompressed-bytes: 67108864
+max-nbt-nodes: 1000000
+max-blocks: 1000000
+max-block-entities: 16384
+max-palette-entries: 16384
+max-chunks: 256
+max-sessions: 2
+transfer-timeout-seconds: 30
+job-timeout-seconds: 300
+# Compartilhados por todas as colagens, nao por jogador.
+operations-per-tick: 4096
+milliseconds-per-tick: 4
+# Somente chunks ja carregados: evita geracao involuntaria e carga sincrona.
+# Durante a colagem: bloquear fisica, redstone, fluidos e transferencias de itens
+# nos blocos afetados. Nao equivale a congelar todos os ticks do Minecraft.
+suppress-events: true

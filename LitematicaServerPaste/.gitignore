@@ -1,0 +1,10 @@
+.research/
+.sandbox/
+.gradle/
+build/
+out/
+dist/
+*.class
+*.log
+.idea/
+*.iml

@@ -1,0 +1,14 @@
+name: LitematicaServerPaste
+version: '${version}'
+main: dev.lsp.LspPlugin
+api-version: '26.1.2'
+description: Paste de blocos e NBT pelo protocolo Servux do Litematica.
+commands:
+  lsp:
+    description: Estado, ajuda e cancelamento do LSP.
+    usage: /lsp [status|cancel|help]
+    permission: lsp.paste
+permissions:
+  lsp.paste:
+    description: Permite colar construcoes do Litematica em modo criativo.
+    default: op
