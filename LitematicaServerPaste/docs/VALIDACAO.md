@@ -1,7 +1,7 @@
-# Validação em outro dispositivo
+# Roteiro de validação do Litematica Server Paste
 
-Este roteiro ainda não foi executado. Usar mundo de testes com Paper 26.1.2 e
-Litematica 0.27.9. Separar erros de build, carregamento, protocolo e colagem.
+A validação em servidor está pendente. Os cenários abaixo descrevem o
+comportamento esperado em um mundo de testes com Paper 26.1.2 e Litematica 0.27.9.
 
 ## Build e conexão
 
@@ -66,6 +66,8 @@ schematic não deve escavar o destino.
 - Colar uma região com ticks de bloco e fluido e conferir os atrasos, incluindo
   uma posição ignorada pelo modo de substituição.
 
-Ao relatar falha, incluir versões/build do Paper, Java, Gradle, Litematica,
-comando usado, saída do erro e `/lsp status`. Não incluir NBT completo ou dados
-privados no diagnóstico.
+## Registro de falhas
+
+Um relatório de teste deve registrar as versões do Paper, do Java, do Gradle e
+do Litematica, o cenário executado, o erro observado e a saída de `/lsp status`.
+Trechos de log devem omitir dados privados e o NBT completo.
