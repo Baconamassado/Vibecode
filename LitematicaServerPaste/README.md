@@ -4,11 +4,9 @@ Plugin para **Paper 26.1.2** e **Litematica 0.27.9 normal** no cliente. Recebe o
 paste pelo protocolo Servux e aplica estados de blocos e NBT no servidor,
 incluindo os inventários recebidos no schematic.
 
-**Primeira implementação: não compilada e não testada em servidor.**
-O usuário fará a compilação em outro dispositivo. Os testes automatizados foram
-escritos, mas não executados. **Ainda não há release pronto nem JAR publicado.**
+**Projeto em desenvolvimento. Ainda não há release nem JAR publicado.** A compilação, os testes automatizados e a validação em servidor estão pendentes.
 
-## Compilar no outro dispositivo
+## Compilar a partir do código-fonte
 
 Usar JDK 25 instalado e Gradle 9.1.0 ou posterior compatível com Java 25.
 Na pasta do projeto:
@@ -114,6 +112,3 @@ Roteiro de servidor: [docs/VALIDACAO.md](docs/VALIDACAO.md).
 - [Serializador NBT do Paper 26.1.2](https://github.com/PaperMC/Paper/blob/ver/26.1.2/paper-server/src/main/java/org/bukkit/craftbukkit/util/CraftNBTTagConfigSerializer.java).
 - [Projetos Paper](https://docs.papermc.io/paper/dev/project-setup/).
 - [Compatibilidade Java/Gradle](https://docs.gradle.org/current/userguide/compatibility.html).
-
-Referências baixadas permanecem em `.research/`, fora da distribuição. Nenhum
-fonte baixado é importado ou executado pela implementação.
